@@ -1,8 +1,11 @@
+
 # Trivia Client Frontend
 
 ## 🎮 Overview
 
 This is the **frontend client** for a real-time, distributed multiplayer trivia game. The app is built using **Next.js 15 (App Router)** and **TypeScript**, styled with **Tailwind CSS**, and uses **ESLint** for code quality.
+
+> 🧠 The backend is written in **FastAPI**. As front-end engineers, we focus on the client experience and real-time interface.
 
 ---
 
@@ -111,6 +114,3 @@ With the following options:
 - Turbopack: No
 - Import alias: `@/*`
 
----
-
-```
