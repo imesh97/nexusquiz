@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import random
+import asyncio
+import uuid
 
 HEARTBEAT_INTERVAL = 0.5  # constants for RAFT (in seconds)
 ELECTION_TIMEOUT_MIN = 1.5
@@ -134,3 +136,16 @@ questions = [  # temp question list
         answer=["Sri Lanka"]
     )
 ]
+
+@app.on_event("startup")
+async def startup_event():
+    global node
+
+    node_id = str(uuid.uuid4())  # random UUID
+    all_nodes = [node_id]  # single node setup for now
+
+    node = RaftNode(node_id, all_nodes)  # initialize node
+
+    # asyncio.create_task(raft_election_timer())  # background tasks (commented out for now)
+    # asyncio.create_task(raft_leader_tasks())
+    # asyncio.create_task(commited_entries())
