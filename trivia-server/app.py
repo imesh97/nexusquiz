@@ -99,3 +99,38 @@ class RaftNode:
 
         self.players = {}  # player_id -> Player
         self.active_game = None  # initial game state
+
+trivia_node = None  # instance for RAFT node
+connected_players = {}  # track active player connections (player_id -> websocket)
+questions = [  # temp question list
+    Question(
+        id=1,
+        question="What is 9 + 10?",
+        options=["19", "21", "22", "23"],
+        answer="19"
+    ),
+    Question(
+        id=2,
+        question="Out of these rappers, who has the most Grammy award wins?",
+        options=["Drake", "Kendrick Lamar", "Lil Wayne", "Eminem"],
+        answer=["Kendrick Lamar"]
+    ),
+    Question(
+        id=3,
+        question="What is the chemical symbol for Potassium?",
+        options=["Po", "Na", "Mg", "K"],
+        answer=["K"]
+    ),
+    Question(
+        id=4,
+        question="Which makeup product is generally applied under the eyes?",
+        options=["Foundation", "Concealer", "Bronzer", "Eyeshadow"],
+        answer=["Concealer"]
+    ),
+    Question(
+        id=5,
+        question="Which country is considered an island?",
+        options=["Russia", "Canada", "Kazakhstan", "Sri Lanka"],
+        answer=["Sri Lanka"]
+    )
+]
