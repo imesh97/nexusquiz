@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import random
@@ -102,7 +102,7 @@ class RaftNode:
         self.players = {}  # player_id -> Player
         self.active_game = None  # initial game state
 
-trivia_node = None  # instance for RAFT node
+node = None  # instance for RAFT node
 connected_players = {}  # track active player connections (player_id -> websocket)
 questions = [  # temp question list
     Question(
@@ -149,3 +149,31 @@ async def startup_event():
     # asyncio.create_task(raft_election_timer())  # background tasks (commented out for now)
     # asyncio.create_task(raft_leader_tasks())
     # asyncio.create_task(commited_entries())
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Trivia Server!", "status": "success"}
+
+@app.get("/status")
+async def get_status():
+    if not node:
+        raise HTTPException(status_code=503, detail="Node not initialized")
+    
+    return {
+        "id": node.id,
+        "role": node.role,
+        "leader": node.leader_id,
+        "term": node.current_term,
+        "players": node.players,
+        "active_game": node.active_game is not None
+    }
+
+@app.get("/players")
+async def get_players():
+    if not node:
+        raise HTTPException(status_code=503, detail="Node not initialized")
+    
+    return {
+        "players": [player.to_dict() for player in node.players.values()]
+    }
+
