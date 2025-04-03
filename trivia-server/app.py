@@ -14,3 +14,65 @@ app.add_middleware(  # enable CORS (so frontend connects)
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# TEMPORARY DATA MODELS (for testing)
+class Player:
+    def __init__(self, id, name, score=0):
+        self.id = id
+        self.name = name
+        self.score = score
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "score": self.score
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            score=data.get("score", 0)
+        )
+
+class Question:
+    def __init__(self, id, question, options, answer):
+        self.id = id
+        self.question = question
+        self.options = options
+        self.answer = answer
+        
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "question": self.question,
+            "options": self.options,
+            "answer": self.answer
+        }
+        
+class Game:
+    def __init__(self, id, question_id, start_time, end_time):
+        self.id = id
+        self.question_id = question_id
+        self.start_time = start_time
+        self.end_time = end_time
+        
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "question_id": self.question_id,
+            "start_time": self.start_time,
+            "end_time": self.end_time
+        }
+        
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            id=data["id"],
+            question_id=data["question_id"],
+            start_time=data["start_time"],
+            end_time=data["end_time"]
+        )
+        
