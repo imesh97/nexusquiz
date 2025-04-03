@@ -389,3 +389,50 @@ async def ws_node(websocket: WebSocket, node_id: str):
         if node_id in node.connections:
             del node.connections[node_id]
 
+async def start_election():
+    node.role = "candidate"  # become candidate
+    node.current_term += 1  # increment term
+    node.voted_for = node.id  # vote for self
+    print(f"{node.id} starting election in term {node.current_term}")
+
+    node.election_timeout = random.uniform(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)  # random election timeout
+    node.last_heartbeat = time.time()
+
+    votes = 1  # count votes
+    for id in node.all_nodes:
+        if id == node.id:  # skip self
+            continue
+        
+        if id in node.connections:  # check if connection exists
+            try:
+                ws = node.connections[id]  # get connection
+                await ws.send_text(json.dumps({  # send request vote
+                    "type": "request_vote",
+                    "term": node.current_term,
+                    "candidate_id": node.id,
+                    "last_log_index": len(node.log) - 1 if node.log else -1,
+                    "last_log_term": node.log[-1].get("term", 0) if node.log else 0
+                }))
+
+                response = await ws.receive_text()  # receive response data
+                data = json.loads(response)
+                if data.get("vote_granted"):
+                    votes += 1  # increment votes
+
+            except Exception as e:  # handle errors
+                print(f"Error sending request vote to {id}: {e}")
+
+    if votes > len(node.all_nodes) // 2:  # become leader if majority
+        await become_leader()
+
+
+async def raft_election_timer():
+    while True:
+        if node.role in ["follower", "candidate"]:  # check if follower or candidate
+            last_heartbeat_since = time.time() - node.last_heartbeat
+            if last_heartbeat_since > node.election_timeout:  # check if timeout
+                await start_election()  # start election
+        await asyncio.sleep(0.1)  # check every 100ms
+
+async def become_leader():  # placeholder for now
+    pass
