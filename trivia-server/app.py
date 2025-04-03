@@ -147,9 +147,9 @@ async def startup_event():
 
     node = RaftNode(node_id, all_nodes)  # initialize node
 
-    # asyncio.create_task(raft_election_timer())  # background tasks (commented out for now)
-    # asyncio.create_task(raft_leader_tasks())
-    # asyncio.create_task(commited_entries())
+    asyncio.create_task(raft_election_timer())  # background tasks
+    asyncio.create_task(raft_leader_tasks())
+    asyncio.create_task(commited_entries())
 
 @app.get("/")
 async def root():
