@@ -191,6 +191,7 @@ async def start_new_game():
 async def commited_entries():
     pass
 
+@app.websocket("/ws/player")
 async def ws_player(websocket: WebSocket):
     await websocket.accept()  # accept connection
     id = str(uuid.uuid4())  # random player UUID
@@ -269,3 +270,4 @@ async def ws_player(websocket: WebSocket):
                 await append_to_log()  # placeholder for now
             
             await notify_players()  # notify other players (placeholder for now)
+
