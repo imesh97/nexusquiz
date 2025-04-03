@@ -178,9 +178,37 @@ async def get_players():
         "players": [player.to_dict() for player in node.players.values()]
     }
 
-# placeholder functions for now
-def append_to_log():
-    pass
+async def append_to_log(entry):
+    if node.role != "leader":  # only leader can append to log
+        return False
+    
+    entry["term"] = node.current_term  # add term
+    node.log.append(entry)
+    
+    for id in node.all_nodes:  # send append entries to all nodes
+        try:
+            if id == node.id:  # skip self
+                continue
+
+            if id in node.connections:  # check if connection exists
+                ws = node.connections[id]  # get connection
+                
+                await ws.send_text(json.dumps({  # send append entries
+                    "type": "append_entries",
+                    "term": node.current_term,
+                    "leader_id": node.id,
+                    "prev_log_index": len(node.log) - 2 if len(node.log) > 1 else -1,
+                    "prev_log_term": node.log[-2]["term"] if len(node.log) > 1 else None,
+                    "entries": [entry],
+                    "leader_commit": node.commit_index
+                }))
+        
+        except Exception as e:  # handle errors
+            print(f"Error sending append entries to {id}: {e}")
+            return False
+    
+    node.commit_index = len(node.log) - 1  # update commit index
+    return True
 
 async def notify_players(message, exclude=None):
     message_json = json.dumps(message)  # get JSON
@@ -479,3 +507,38 @@ async def raft_leader_tasks():
                 await asyncio.sleep(HEARTBEAT_INTERVAL)  # heartbeat interval
         else:  # follower or candidate
             await asyncio.sleep(0.1)  # check every 100ms
+
+async def log_entry(entry):
+    action = entry.get("action")  # get action
+    
+    if action == "add_player":  # add player
+        player_data = entry.get("player")
+        player = Player.from_dict(player_data)
+        node.players[player.id] = player
+        
+    elif action == "remove_player":  # remove player
+        player_id = entry.get("player_id")
+        if player_id in node.players:
+            del node.players[player_id]
+
+    elif action == "update_score":  # update player score
+        player_id = entry.get("player_id")
+        score = entry.get("score")
+        if player_id in node.players:
+            node.players[player_id].score = score
+    
+    elif action == "start_game":  # start game
+        game_data = entry.get("game")
+        node.active_game = Game.from_dict(game_data)
+
+async def commited_entries():
+    while True:
+        if node.commit_index > node.last_applied:  # check if there are entries to apply
+            for i in range(node.last_applied + 1, node.commit_index + 1):  # apply entries
+                if i < len(node.log):
+                    entry = node.log[i]
+                    await log_entry(entry)  # apply entry
+            
+            node.last_applied = node.commit_index
+        
+        await asyncio.sleep(0.1)  # check every 100ms
