@@ -1,24 +1,23 @@
-# NexusQuiz Trivia Client 
 
-## 🎮 Overview
+# 🎮 NexusQuiz Trivia Client (Frontend)
 
-This is the **frontend client** for a real-time, distributed multiplayer trivia game called NexusQuiz. The app is built using **Next.js 15** with **TypeScript**, styled with **Tailwind CSS**, and uses **Zustand** for state management.
+This is the **frontend client** for **NexusQuiz**, a distributed multiplayer trivia game. Built with **Next.js 15** and **TypeScript**, styled using **Tailwind CSS**, and managed globally with **Zustand**.
 
-*> 🧠 The backend will be written in **FastAPI**. As front-end engineers, we focus on the client experience and real-time interface.*
+> 🧠 Backend will be powered by **FastAPI**. This repo focuses on the real-time, reactive frontend experience.
 
 ---
 
-## 🛠 Tech Stack
+## 🛠️ Tech Stack
 
 - **Framework**: Next.js 15.2.4 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS 4.0
 - **State Management**: Zustand 5.0.3
 - **Linting**: ESLint 9
-- **Structure**: `src/` directory enabled
+- **Directory Structure**: `src/` enabled
 - **Image Optimization**: `next/image`
-- **Alias**: `@/*` maps to `./src/*`
-- **Dev Server**: Using Turbopack (`npm run dev --turbopack`)
+- **Aliases**: `@/*` maps to `src/*`
+- **Dev Tooling**: Turbopack (`npm run dev --turbopack`)
 
 ---
 
@@ -26,203 +25,195 @@ This is the **frontend client** for a real-time, distributed multiplayer trivia 
 
 ```
 /trivia-client
-├── public/                      # Static assets
+├── public/
 ├── src/
-│   ├── app/                     # App Router pages
-│   │   ├── page.tsx             # Home/Join route
-│   │   ├── layout.tsx           # Root layout
-│   │   └── game/                # Game routes
-│   │       └── [gameCode]/      # Dynamic game lobby route
-│   │           └── page.tsx     # Lobby page (player list, waiting area)
-│   ├── components/              # Reusable components (planned)
-│   ├── store/                   # Zustand state management
-│   │   └── gameStore.ts         # Game state store
-│   └── types/                   # Type definitions
-│       └── game.ts              # Game-related type definitions
-├── .eslintrc.mjs
+│   ├── app/
+│   │   ├── page.tsx                      # Join page (lobby entry)
+│   │   ├── layout.tsx                    # Global layout
+│   │   └── game/
+│   │       └── [gameCode]/
+│   │           ├── page.tsx              # Lobby page (updated)
+│   │           └── play/page.tsx         # [Planned] Game play screen
+│   ├── components/                       # [Planned] Shared components
+│   ├── store/
+│   │   └── gameStore.ts                  # Zustand game state store
+│   └── types/
+│       └── game.ts                       # Game-related type definitions
 ├── tailwind.config.ts
-├── postcss.config.js
-├── next.config.ts
 ├── tsconfig.json
 └── package.json
 ```
 
 ---
 
-## 🏗️ Implemented Features
+## ✅ Key Fix: Zustand Infinite Render Bug
 
-### Pages
-1. **Join Page** (`src/app/page.tsx`)
-   - User input for nickname and game code
-   - Form validation and error handling
-   - Join game functionality using simulated backend
-   - Responsive gradient background UI
+When using Zustand with selectors like:
 
-2. **Lobby Page** (`src/app/game/[gameCode]/page.tsx`)
-   - Dynamic route based on game code
-   - Player list with real-time updates
-   - Host controls for starting the game
-   - "Bot Player" simulation for testing
-   - Redirect protection for direct URL access
+```tsx
+const { playerName, gameCode } = useGameStore((state) => ({ ... }));
+```
 
-### State Management
-1. **Game Store** (`src/store/gameStore.ts`)
-   - Zustand store for global state management
-   - Player information tracking
-   - Game status management (joining → lobby → playing → finished)
-   - Simulated backend API with `fakeFetchLobbyData()`
-   - TypeScript interfaces for type safety
+This causes an **infinite loop** in React because it creates a **new object reference** on every render. ✅ **Fixed by subscribing to each slice individually**:
 
-### Types
-1. **Game Types** (`src/types/game.ts`)
-   - Type definitions for Players, Game status
-   - Interfaces for Questions, Answers, and Game rounds (future use)
+```tsx
+const playerName = useGameStore((state) => state.playerName);
+const gameCode = useGameStore((state) => state.gameCode);
+// etc.
+```
+
+> 🧠 This ensures only specific state changes trigger a re-render.
 
 ---
 
-## 🧩 State Management Structure
+## ✨ Design Guidelines
 
-The Zustand store (`gameStore.ts`) manages:
+The visual theme is inspired by **sci-fi neon** and **cyberpunk tech** aesthetics to fit the "Nexus" brand:
 
-- **Player State**:
-  - `playerName`: Current user's name
-  - `playerId`: Unique ID for the current user
-  - `players`: Array of all players in the game
-  - `isHost`: Boolean indicating if current user is the host
+| Element        | Design Choice                                             |
+|----------------|-----------------------------------------------------------|
+| Background     | Radial gradient from gray → purple → black                |
+| Typography     | Futuristic bold + mono typefaces with gradient text       |
+| Colors         | Neon purples, teals, greens with glowing shadows          |
+| Effects        | `backdrop-blur`, `opacity`, hover/scale transitions       |
+| Components     | Soft rounded corners, subtle borders, glowing outlines    |
+| Accessibility  | ARIA labels + contrast-compliant focus indicators         |
 
-- **Game Status**:
-  - `gameStatus`: 'joining' | 'lobby' | 'playing' | 'finished' | 'error'
-  - `gameCode`: Code for the current game room
-  - `errorMessage`: Error display handling
+> 🔮 *Keep things clean, mysterious, and reactive — like a high-tech quiz arena.*
 
-- **Actions**:
-  - `initializeLobby`: Set up game after successful join
-  - `addPlayer`: Add a new player to the game
-  - `removePlayer`: Remove a player from the game
-  - `startGame`: Transition from lobby to playing state
-  - `resetGame`: Reset all state (used for errors or game exit)
-  - `setError`: Handle error state
+---
+
+## 🏗️ Implemented Features
+
+### ✅ Pages
+
+#### `/src/app/page.tsx` → Join Page
+
+- Nickname + Game Code input (with validation)
+- Loading state using `useTransition`
+- Error handling using Zustand
+- Redirects to `/game/[code]` upon success
+
+#### `/src/app/game/[gameCode]/page.tsx` → Lobby Page
+
+- **Uses dynamic routing** with `useParams`
+- Zustand-powered player list
+- Host-only "Start Game" button
+- Simulated bot join
+- Fixed infinite loop issue by **isolating selectors**
+- Auto-navigation to `/play` if `gameStatus === 'playing'`
 
 ---
 
 ## 🔄 Game Flow
 
-1. **Join Game** (Home Page):
+1. **Join Game**
    - User enters nickname and game code
-   - Backend validates and assigns player ID
-   - Store updates with player info
+   - Simulated API returns `players`, `playerId`, and `hostStatus`
+   - Zustand store is populated
    - Redirect to lobby
 
-2. **Lobby** (Wait Stage):
-   - Players see a list of participants
-   - Host sees "Start Game" button
-   - New players trigger UI updates
-   - Protected from direct URL access
+2. **Lobby**
+   - See real-time list of players
+   - Host can start the game
+   - Lobby is protected from direct URL access
 
-3. **Game Start** (In Progress):
-   - Host triggers game start
-   - All players transition to playing state
-   - UI navigates to game screen (in development)
+3. **Game Start**
+   - When host starts game, state changes to `"playing"`
+   - All users auto-navigate to `/game/[code]/play`
 
-4. **Game Play** (Planned):
-   - Questions and answer selection
-   - Real-time scoring
-   - Leaderboard updates
+4. **Game Play** *(Coming Soon)*
+   - Question rendering
+   - Timed answer selection
+   - Real-time score updates and leaderboard
 
 ---
 
-## ✅ Setup & Run
+## 🧠 State Architecture (Zustand)
 
-```bash
-# Install dependencies
-npm install
+### `/src/store/gameStore.ts`
 
-# Run local development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm run start
-
-# Run linting
-npm run lint
+```ts
+interface GameState {
+  playerName: string | null;
+  gameCode: string | null;
+  players: Player[];
+  playerId: string | null;
+  isHost: boolean;
+  gameStatus: 'joining' | 'lobby' | 'playing' | 'finished' | 'error';
+  errorMessage: string | null;
+  // Actions:
+  initializeLobby(...), addPlayer(...), removePlayer(...), etc.
+}
 ```
+
+✅ `fakeFetchLobbyData()` simulates a backend call, returning mocked player state and role.
 
 ---
 
-## 📦 Dependencies
+## 🧪 Simulated Backend (for Frontend Dev)
 
-### Core
-- `next`: 15.2.4
-- `react`: 19.0.0
-- `react-dom`: 19.0.0
-- `zustand`: 5.0.3
+Located in `gameStore.ts`, `fakeFetchLobbyData()` simulates:
 
-### Dev
-- `typescript`: 5.x
-- `@types/react`: 19.x
-- `@types/node`: 20.x
-- `@types/react-dom`: 19.x
-- `tailwindcss`: 4.x
-- `@tailwindcss/postcss`: 4.x
-- `eslint`: 9.x
-- `eslint-config-next`: 15.2.4
+- Valid game joins
+- Host assignment
+- Join errors (`"ERROR"` or `"FULL"` codes)
+- Simulated player IDs
 
 ---
 
-## 🧑‍💻 Technical Details
+## 🧑‍💻 Coding Practices
 
-### State Updates
-The Zustand store uses a combination of direct state updates and computed values:
-
-```typescript
-// Example action to add a player
-addPlayer: (player) => set((state: GameState) => {
-  if (state.players.some(p => p.id === player.id)) {
-    return {}; // No change if player already exists
-  }
-  return { players: [...state.players, player] };
-}),
-```
-
-### Navigation
-Next.js App Router handles navigation between pages, with programmatic navigation used for game flow:
-
-```typescript
-// Example of redirect after joining
-router.push(`/game/${trimmedCode}`);
-```
-
-### Loading States
-Uses React's `useTransition` hook for loading states:
-
-```typescript
-const [isPending, startTransition] = useTransition();
-```
+- Use **TypeScript** in all files
+- Use **Zustand** for global state
+- Leverage **App Router** for navigation
+- **No selector object patterns** with Zustand — pull state values individually
+- Use `useTransition()` for async UI actions (e.g., joining)
 
 ---
 
 ## 🚀 Next Steps
 
-- [ ] Create `game/[gameCode]/play/page.tsx` for actual gameplay
-- [ ] Implement WebSocket connections for real-time updates
-- [ ] Add scoring system and leaderboard
-- [ ] Create question display and answer selection UI
-- [ ] Connect to actual FastAPI backend
-- [ ] Add game timer functionality
-- [ ] Implement user authentication/profiles
-- [ ] Add sound effects and animations
+- [ ] Build `/game/[gameCode]/play/page.tsx` screen
+- [ ] Implement WebSocket syncing
+- [ ] Add quiz question rendering + answers
+- [ ] Implement countdown timers
+- [ ] Add leaderboard
+- [ ] Animate transitions and effects
+- [ ] FastAPI backend connection
 
 ---
 
-## 📚 Coding Conventions
+## 🔧 Setup & Run
 
-- Use **TypeScript** for all components and functions
-- Use **Zustand** for state management
-- Use **Tailwind** utility classes for styling
-- Follow Next.js App Router patterns
-- Use dynamic routes for game-specific pages
-- Leverage TypeScript interfaces for type safety
-- Simulate backend for frontend development
+```bash
+# Install deps
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for prod
+npm run build
+
+# Run lint checks
+npm run lint
+```
+
+---
+
+## 📦 Core Dependencies
+
+```json
+"next": "15.2.4",
+"react": "19.0.0",
+"react-dom": "19.0.0",
+"zustand": "5.0.3",
+"tailwindcss": "4.x",
+"eslint": "9.x",
+"typescript": "5.x"
+```
+
+
+
+🧠 **TL;DR:** NexusQuiz is a futuristic trivia platform with clean state management, glowing UI, and robust architecture. We’ve squashed the Zustand infinite loop, nailed the aesthetic, and are ready to play.
