@@ -1,102 +1,155 @@
-import Image from "next/image";
+// src/app/page.tsx
+'use client';
 
-export default function Home() {
+import { useState, useTransition } from 'react'; // Import useTransition
+import { useRouter } from 'next/navigation';
+import { useGameStore, fakeFetchLobbyData, GameState } from '@/store/gameStore'; // Import GameState type
+
+export default function JoinPage() {
+  const [nickname, setNickname] = useState('');
+  const [code, setCode] = useState('');
+  const [isPending, startTransition] = useTransition(); // Hook for loading state without blocking UI
+  const router = useRouter();
+
+  // Get state setting actions and error state from store with explicit typing
+  const initializeLobby = useGameStore((state: GameState) => state.initializeLobby);
+  const setError = useGameStore((state: GameState) => state.setError);
+  const errorMessage = useGameStore((state: GameState) => state.errorMessage);
+  const resetGame = useGameStore((state: GameState) => state.resetGame); // Get reset action
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null); // Clear previous errors
+
+    const trimmedNickname = nickname.trim();
+    const trimmedCode = code.trim().toUpperCase();
+
+    if (!trimmedNickname || !trimmedCode) {
+       setError('Please enter both a nickname and a game code.');
+       return; // Stop execution
+    }
+
+    // Start transition for loading state
+    startTransition(async () => {
+      try {
+        // --- Simulate Backend Call ---
+        // Replace this with your actual API call
+        const lobbyData = await fakeFetchLobbyData(trimmedCode, trimmedNickname);
+        // --- End Simulation ---
+
+        if (lobbyData) {
+          // Update Zustand store with data received (simulated) from backend
+          initializeLobby(
+            trimmedNickname,
+            trimmedCode,
+            lobbyData.players,
+            lobbyData.newPlayerId,
+            lobbyData.isHost
+          );
+          // Navigate to the lobby page
+          router.push(`/game/${trimmedCode}`);
+        } else {
+           // This case might happen if fakeFetchLobbyData could return null
+           // (although the current simulation throws errors instead)
+           setError('Could not find or join the lobby.');
+        }
+      } catch (error: any) {
+         // Handle errors from the simulated fetch
+         console.error("Join failed:", error);
+         setError(error.message || 'An unexpected error occurred.');
+         // Optionally reset parts of the state if join fails completely
+         // resetGame(); // Uncomment if you want to clear everything on error
+      }
+    });
+  };
+
+  // Clear error when user starts typing again
+  const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
+      setter(value);
+      if (errorMessage) {
+          setError(null);
+      }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
+      <div className="text-center mb-12">
+         <h1 className="text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
+          NexusQuiz
+        </h1>
+        <p className="text-xl text-purple-300 font-light">
+          Join the Showdown!
+        </p>
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <form
+        onSubmit={handleJoin}
+        className="w-full max-w-sm bg-gray-800 bg-opacity-70 backdrop-filter backdrop-blur-lg rounded-xl shadow-2xl p-8 border border-purple-700/50"
+      >
+        {/* Nickname Input */}
+        <div className="mb-6">
+          <label htmlFor="nickname" className="block mb-2 text-sm font-medium text-purple-300">
+            Choose Your Nickname
+          </label>
+          <input
+            type="text"
+            id="nickname"
+            value={nickname}
+            onChange={(e) => handleInputChange(setNickname, e.target.value)} // Use wrapper function
+            maxLength={16}
+            className={`w-full px-4 py-3 bg-gray-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition duration-200 ${
+                errorMessage && !nickname.trim() ? 'border-red-500 ring-red-500' : 'border-gray-600 focus:ring-purple-500' // Highlight if error and empty
+            }`}
+            placeholder="e.g., QuizMasterFlex"
+            required
+            aria-describedby={errorMessage && !nickname.trim() ? "error-message" : undefined} // For accessibility
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        {/* Game Code Input */}
+        <div className="mb-6"> {/* Adjusted margin */}
+          <label htmlFor="gameCode" className="block mb-2 text-sm font-medium text-purple-300">
+            Enter Game Code
+          </label>
+          <input
+            type="text"
+            id="gameCode"
+            value={code}
+            onChange={(e) => handleInputChange(setCode, e.target.value.toUpperCase())} // Force uppercase on change & use wrapper
+            maxLength={6}
+            className={`w-full px-4 py-3 bg-gray-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition duration-200 uppercase tracking-widest text-center font-mono text-lg ${
+                 errorMessage && !code.trim() ? 'border-red-500 ring-red-500' : 'border-gray-600 focus:ring-purple-500' // Highlight if error and empty
+            }`}
+            placeholder="ABCXYZ"
+            required
+            style={{ textTransform: 'uppercase' }}
+            aria-describedby={errorMessage && !code.trim() ? "error-message" : undefined} // For accessibility
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        </div>
+
+        {/* Error Message Area */}
+        {errorMessage && (
+            <p id="error-message" className="text-red-400 text-sm text-center mb-4" role="alert">
+                {errorMessage}
+            </p>
+        )}
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isPending} // Disable button when pending
+          className={`w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transform transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-pink-400 ${
+            isPending
+              ? 'opacity-50 cursor-not-allowed'
+              : 'hover:from-pink-600 hover:to-purple-700 hover:scale-105'
+          }`}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+          {isPending ? 'Joining...' : 'Join Lobby'} {/* Change text when pending */}
+        </button>
+      </form>
+
+      <footer className="mt-12 text-center text-gray-500 text-sm">
+         © {new Date().getFullYear()} NexusQuiz
       </footer>
     </div>
   );
