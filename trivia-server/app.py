@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import time
+import random
 
 HEARTBEAT_INTERVAL = 0.5  # constants for RAFT (in seconds)
 ELECTION_TIMEOUT_MIN = 1.5
@@ -75,4 +77,25 @@ class Game:
             start_time=data["start_time"],
             end_time=data["end_time"]
         )
+
+class RaftNode:
+    def __init__(self, id, all_nodes):
+        self.id = id
+        self.all_nodes = all_nodes
         
+        self.current_term = 0  # initial RAFT state
+        self.voted_for = None
+        self.log = []
+        self.commit_index = 0
+        self.last_applied = 0
+        
+        self.role = "follower"  # initial RAFT role
+        self.leader_id = None
+
+        self.last_heartbeat = time.time()  # initial election timer
+        self.election_timeout = random.uniform(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
+
+        self.connections = {}  # id -> websocket connection
+
+        self.players = {}  # player_id -> Player
+        self.active_game = None  # initial game state
