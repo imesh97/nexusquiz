@@ -229,7 +229,7 @@ async def start_new_game():
     if node.role != "leader":  # only leader can start game
         return
     
-    question_id = random.randint(0, len(questions - 1))  # random question
+    question_id = random.randint(0, len(questions) - 1)  # random question
     game_id = str(uuid.uuid4())  # random game UUID
     start_time = time.time()  # current time
 
@@ -242,7 +242,10 @@ async def start_new_game():
 
     node.active_game = Game(**game_data)  # create and set active game
 
-    await append_to_log()  # append to log (placeholder for now)
+    await append_to_log({  # append to log
+        "action": "start_game",
+        "game": game_data
+    })
 
     question = questions[question_id]  # get question
     await notify_players({  # notify question to all players
@@ -287,7 +290,10 @@ async def ws_player(websocket: WebSocket):
                 connected_players[id] = websocket
 
                 if node.role == "leader":  # append to log if leader
-                    await append_to_log()  # placeholder for now
+                    await append_to_log({
+                        "action": "add_player",
+                        "player": player.to_dict()
+                    })
 
                 await websocket.send_text(json.dumps({  # send welcome message with curr state
                     "type": "welcome",
@@ -303,7 +309,7 @@ async def ws_player(websocket: WebSocket):
 
             elif message["type"] == "start_game":  # handle start game message
                 if node.role == "leader":  # only leader can start game
-                    await start_new_game()  # placeholder for now
+                    await start_new_game()
 
             elif message["type"] == "answer":  # handle answer message
                 question_id = message.get("question_id")  # question and answer ids
@@ -319,7 +325,11 @@ async def ws_player(websocket: WebSocket):
                         player.score += 10  # add 10 points
 
                         if node.role == "leader":  # append to log if leader
-                            await append_to_log()  # placeholder for now
+                            await append_to_log({
+                                "action": "update_score",
+                                "player_id": id,
+                                "score": player.score
+                            })
                     
                     await websocket.send_text(json.dumps({  # send update score message
                         "type": "update_score",
@@ -346,7 +356,10 @@ async def ws_player(websocket: WebSocket):
             del node.players[id]
 
             if node.role == "leader":  # append to log if leader
-                await append_to_log()  # placeholder for now
+                await append_to_log({
+                    "action": "remove_player",
+                    "player_id": id
+                })
             
             await notify_players({  # notify other players
                 "type": "player_left",
