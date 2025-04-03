@@ -5,6 +5,7 @@ import random
 import asyncio
 import uuid
 import json
+import uvicorn
 
 HEARTBEAT_INTERVAL = 0.5  # constants for RAFT (in seconds)
 ELECTION_TIMEOUT_MIN = 1.5
@@ -542,3 +543,6 @@ async def commited_entries():
             node.last_applied = node.commit_index
         
         await asyncio.sleep(0.1)  # check every 100ms
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # run server (app)
