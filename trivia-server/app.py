@@ -182,14 +182,58 @@ async def get_players():
 def append_to_log():
     pass
 
-def notify_players():
-    pass
+async def notify_players(message, exclude=None):
+    message_json = json.dumps(message)  # get JSON
+
+    for player_id, websocket in list(connected_players.items()):  # notify all players
+        if exclude and player_id == exclude:  # exclude specific player
+            continue
+
+        try:
+            await websocket.send_text(message_json)  # send message
+        
+        except Exception as e:  # handle connection errors -> remove player
+            if player_id in connected_players:
+                del connected_players[player_id]
 
 async def start_new_game():
-    pass
+    if node.role != "leader":  # only leader can start game
+        return
+    
+    question_id = random.randint(0, len(questions - 1))  # random question
+    game_id = str(uuid.uuid4())  # random game UUID
+    start_time = time.time()  # current time
 
-async def commited_entries():
-    pass
+    game_data = {  # create game obj
+        "id": game_id,
+        "question_id": question_id,
+        "start_time": start_time,
+        "end_time": start_time + 30
+    }
+
+    node.active_game = Game(**game_data)  # create and set active game
+
+    await append_to_log()  # append to log (placeholder for now)
+
+    question = questions[question_id]  # get question
+    await notify_players({  # notify question to all players
+        "type": "new_question",
+        "question": question.question,
+        "options": question.options,
+        "question_id": question_id,
+        "time_limit": 30
+    })
+
+    asyncio.create_task(schedule_next_game())  # schedule next question
+
+async def schedule_next_game():
+    if node.active_game:  # wait to current game to end (plus 5 seconds)
+        wait_time = (node.active_game.end_time - time.time()) + 5
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+    
+    if node.role == "leader":
+        await start_new_game()
 
 @app.websocket("/ws/player")
 async def ws_player(websocket: WebSocket):
