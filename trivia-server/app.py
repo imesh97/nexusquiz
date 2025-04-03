@@ -432,7 +432,41 @@ async def raft_election_timer():
             last_heartbeat_since = time.time() - node.last_heartbeat
             if last_heartbeat_since > node.election_timeout:  # check if timeout
                 await start_election()  # start election
+
         await asyncio.sleep(0.1)  # check every 100ms
 
-async def become_leader():  # placeholder for now
-    pass
+async def become_leader():
+    print(f"Node {node.id} won election in term {node.current_term}")
+    node.role = "leader"  # become leader
+    node.leader_id = node.id  # set leader id
+    node.last_heartbeat = time.time()  # reset heartbeat
+
+    await notify_players(
+        {"type": "new_leader", "leader_id": node.id}
+        )  # notify other nodes
+
+    await start_new_game()  # start new game
+
+async def raft_leader_tasks():
+    while True:
+        if node.role == "leader":
+            for id in node.all_nodes:  # send heartbeat to all followers
+                if id == node.id:  # skip self
+                    continue
+                
+                if id in node.connections:  # check if connection exists
+                    try:
+                        ws = node.connections[id]  # get connection
+                        await ws.send_text(json.dumps({  # send append entries
+                            "type": "append_entries",
+                            "term": node.current_term,
+                            "leader_id": node.id,
+                            "entries": []  # heartbeat (empty entries)
+                        }))
+                    
+                    except Exception as e:  # handle errors
+                        print(f"Error sending append entries to {id}: {e}")
+                    
+                await asyncio.sleep(HEARTBEAT_INTERVAL)  # heartbeat interval
+        else:  # follower or candidate
+            await asyncio.sleep(0.1)  # check every 100ms
