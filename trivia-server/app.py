@@ -267,7 +267,10 @@ async def ws_player(websocket: WebSocket):
                     "active_game": node.active_game.to_dict() if node.active_game else None
                 }))
 
-                await notify_players()  # notify other players (placeholder for now)
+                await notify_players({  # notify other players
+                    "type": "player_joined",
+                    "player": player.to_dict()
+                }, exclude=id)
 
             elif message["type"] == "start_game":  # handle start game message
                 if node.role == "leader":  # only leader can start game
@@ -295,7 +298,10 @@ async def ws_player(websocket: WebSocket):
                         "score": node.players[id].score if id in node.players else 0
                     }))
 
-                    await notify_players()  # notify other players (placeholder for now)
+                    await notify_players({  # notify updated scores
+                        "type": "leaderboard",
+                        "players": [p.to_dict() for p in node.players.values()]
+                    })
     
     except WebSocketDisconnect:  # handle websocket disconnect
         print(f"Player {id} disconnected")
@@ -313,7 +319,10 @@ async def ws_player(websocket: WebSocket):
             if node.role == "leader":  # append to log if leader
                 await append_to_log()  # placeholder for now
             
-            await notify_players()  # notify other players (placeholder for now)
+            await notify_players({  # notify other players
+                "type": "player_left",
+                "player_id": id
+            }, exclude=id)
 
 @app.websocket("/ws/node/{node_id}")
 async def ws_node(websocket: WebSocket, node_id: str):
