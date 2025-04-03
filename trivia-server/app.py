@@ -271,6 +271,7 @@ async def ws_player(websocket: WebSocket):
             
             await notify_players()  # notify other players (placeholder for now)
 
+@app.websocket("/ws/node/{node_id}")
 async def ws_node(websocket: WebSocket, node_id: str):
     await websocket.accept()  # accept connection
     
@@ -343,3 +344,4 @@ async def ws_node(websocket: WebSocket, node_id: str):
         # cleanup
         if node_id in node.connections:
             del node.connections[node_id]
+
