@@ -271,3 +271,75 @@ async def ws_player(websocket: WebSocket):
             
             await notify_players()  # notify other players (placeholder for now)
 
+async def ws_node(websocket: WebSocket, node_id: str):
+    await websocket.accept()  # accept connection
+    
+    node.connections[node_id] = websocket  # register connection
+
+    try:
+        while True:
+            data = await websocket.receive_text()  # receive message json
+            message = json.loads(data)
+
+            # handle RAFT messages
+            if message["type"] == "append_entries":
+                term = message.get("term", 0)  # process heartbeat/log entries
+                leader_id = message.get("leader_id")
+
+                if term >= node.current_term:  # sender's term is greater of equal -> acknowledge as leader
+                    node.current_term = term
+                    node.role = "follower"
+                    node.leader_id = leader_id
+                    node.last_heartbeat = time.time()
+                    
+                    entries = message.get("entries", [])  # process any entries
+                    if entries:
+                        node.log.extend(entries)
+                        
+                    await websocket.send_text(json.dumps({  # send success response
+                        "type": "append_entries_response",
+                        "term": node.current_term,
+                        "success": True
+                    }))
+                else:  # our term is greater -> reject
+                    await websocket.send_text(json.dumps({  # send failure response
+                        "type": "append_entries_response",
+                        "term": node.current_term,
+                        "success": False
+                    }))
+            
+            elif message["type"] == "request_vote":
+                term = message.get("term", 0)  # process vote request
+                candidate_id = message.get("candidate_id")
+                last_log_index = message.get("last_log_index", -1)
+                last_log_term = message.get("last_log_term", 0)
+
+                grant_vote = False
+                
+                if term > node.current_term:  # sender's term is greater -> become follower
+                    node.current_term = term
+                    node.voted_for = None
+                    node.role = "follower"
+                
+                if (node.voted_for is None or node.voted_for == candidate_id) and term >= node.current_term:  # check if voted for candidate
+                    last_log_term_x = node.log[-1].get("term", 0) if node.log else 0  # get last log term and index
+                    last_log_index_x = len(node.log) - 1
+
+                    if (last_log_term > last_log_term_x or (last_log_term == last_log_term_x and last_log_index >= last_log_index_x)):  # check if candidate log is up to date
+                        grant_vote = True  # grant vote
+                        node.voted_for = candidate_id
+                        node.last_heartbeat = time.time()  # reset timeout when voting
+                
+                await websocket.send_text(json.dumps({  # send request vote response
+                    "type": "request_vote_response",
+                    "term": node.current_term,
+                    "vote_granted": grant_vote
+                }))
+    
+    except Exception as e:  # handle general errors
+        print(f"Error handling WebSocket: {e}")
+
+    finally:
+        # cleanup
+        if node_id in node.connections:
+            del node.connections[node_id]
