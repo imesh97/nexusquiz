@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import random
 import asyncio
 import uuid
+import json
 
 HEARTBEAT_INTERVAL = 0.5  # constants for RAFT (in seconds)
 ELECTION_TIMEOUT_MIN = 1.5
@@ -177,3 +178,94 @@ async def get_players():
         "players": [player.to_dict() for player in node.players.values()]
     }
 
+# placeholder functions for now
+def append_to_log():
+    pass
+
+def notify_players():
+    pass
+
+async def start_new_game():
+    pass
+
+async def commited_entries():
+    pass
+
+async def ws_player(websocket: WebSocket):
+    await websocket.accept()  # accept connection
+    id = str(uuid.uuid4())  # random player UUID
+
+    try:
+        await websocket.send_text(json.dumps({  # send connection established message
+            "type": "connection_established",
+            "id": id
+        }))
+
+        while True:
+            data = await websocket.receive_text()  # receive message json
+            message = json.loads(data)
+
+            if message["type"] == "join":  # handle join message
+                name = message.get("name", f"Player_{id[:6]}")
+
+                player = Player(id=id, name=name, score=0)  # create and add Player
+                node.players[id] = player
+                connected_players[id] = websocket
+
+                if node.role == "leader":  # append to log if leader
+                    await append_to_log()  # placeholder for now
+
+                await websocket.send_text(json.dumps({  # send welcome message with curr state
+                    "type": "welcome",
+                    "player": player.to_dict(),
+                    "players": [p.to_dict() for p in node.players.values()],
+                    "active_game": node.active_game.to_dict() if node.active_game else None
+                }))
+
+                await notify_players()  # notify other players (placeholder for now)
+
+            elif message["type"] == "start_game":  # handle start game message
+                if node.role == "leader":  # only leader can start game
+                    await start_new_game()  # placeholder for now
+
+            elif message["type"] == "answer":  # handle answer message
+                question_id = message.get("question_id")  # question and answer ids
+                answer_id = message.get("answer_id")
+
+                # check if game is active and current question matches
+                if (node.active_game and node.active_game.question_id == question_id and time.time() < node.active_game.end_time):
+                    question = questions[question_id]
+                    correct = question.answer == answer_id  # check if answer is correct
+
+                    if correct and id in node.players:  # if correct, update player score
+                        player = node.players[id]
+                        player.score += 10  # add 10 points
+
+                        if node.role == "leader":  # append to log if leader
+                            await append_to_log()  # placeholder for now
+                    
+                    await websocket.send_text(json.dumps({  # send update score message
+                        "type": "update_score",
+                        "correct": correct,
+                        "score": node.players[id].score if id in node.players else 0
+                    }))
+
+                    await notify_players()  # notify other players (placeholder for now)
+    
+    except WebSocketDisconnect:  # handle websocket disconnect
+        print(f"Player {id} disconnected")
+    
+    except Exception as e:  # handle general errors
+        print(f"Error handling WebSocket: {e}")
+
+    finally:
+        # cleanup
+        if id in connected_players:
+            del connected_players[id]
+        if id in node.players:
+            del node.players[id]
+
+            if node.role == "leader":  # append to log if leader
+                await append_to_log()  # placeholder for now
+            
+            await notify_players()  # notify other players (placeholder for now)
