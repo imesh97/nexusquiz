@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // src/app/game/[gameCode]/play/page.tsx
 "use client";
 import { getLeaderUrl } from "@/utils/network";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface Question {
   id: number;
@@ -34,6 +37,7 @@ export default function PlayPage() {
   const [answered, setAnswered] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_DURATION);
   const [showResults, setShowResults] = useState(false);
+  const [voteCounts, setVoteCounts] = useState<number[]>([0, 0, 0, 0]);
 
   // Validate that necessary info is present
   useEffect(() => {
@@ -56,6 +60,8 @@ export default function PlayPage() {
           setAnswered(false);
           setTimeLeft(TIMER_DURATION);
           setShowResults(false);
+          // Reset vote counts for the new question
+          setVoteCounts(new Array(data.question.options.length).fill(0));
         }
       } catch (error) {
         console.error("Error fetching lobby state:", error);
@@ -72,10 +78,11 @@ export default function PlayPage() {
 
       // If the user hasn't answered when timer expires, record it as unanswered
       if (!answered) {
+        // Mark as answered but with no selection to indicate timeout
         setAnswered(true);
         setSelectedOption(null);
 
-        // Submit "no answer" to backend
+        // Submit a "no answer" to the backend
         const submitNoAnswer = async () => {
           try {
             const leaderUrl = await getLeaderUrl();
@@ -85,7 +92,7 @@ export default function PlayPage() {
               body: JSON.stringify({
                 code: gameCode,
                 player_id: playerId,
-                answer: -1, // -1 -> no answer
+                answer: -1, // -1 indicates no answer was selected
               }),
             });
           } catch (error) {
@@ -116,8 +123,12 @@ export default function PlayPage() {
           const data = JSON.parse(event.data);
           if (data.event === "score_update") {
             console.log("Received player data:", data.players);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setPlayers(data.players as any[]); // Simple type assertion
+
+            // Update vote counts if this includes answer stats
+            if (data.voteCounts) {
+              setVoteCounts(data.voteCounts);
+            }
           }
 
           if (data.event === "game_started") {
@@ -126,6 +137,7 @@ export default function PlayPage() {
             setAnswered(false);
             setTimeLeft(TIMER_DURATION);
             setShowResults(false);
+            setVoteCounts(new Array(data.question.options.length).fill(0));
           }
           if (data.event === "next_question") {
             if (data.question?.id) {
@@ -134,6 +146,7 @@ export default function PlayPage() {
               setAnswered(false);
               setTimeLeft(TIMER_DURATION);
               setShowResults(false);
+              setVoteCounts(new Array(data.question.options.length).fill(0));
             } else {
               router.push(`/game/${gameCode}/results`);
             }
@@ -148,6 +161,16 @@ export default function PlayPage() {
               setAnswered(true);
               setSelectedOption(null);
             }
+          }
+          // Handle player answer updates
+          if (data.event === "player_answer") {
+            setVoteCounts((prev) => {
+              const updated = [...prev];
+              if (data.answerIndex >= 0 && data.answerIndex < updated.length) {
+                updated[data.answerIndex]++;
+              }
+              return updated;
+            });
           }
         };
 
@@ -167,6 +190,13 @@ export default function PlayPage() {
       setSelectedOption(index);
       setAnswered(true);
 
+      // Update local vote counts
+      setVoteCounts((prev) => {
+        const updated = [...prev];
+        updated[index]++;
+        return updated;
+      });
+
       try {
         const leaderUrl = await getLeaderUrl();
         const response = await fetch(`${leaderUrl}/lobby/answer`, {
@@ -184,7 +214,6 @@ export default function PlayPage() {
         }
         const result = await response.json();
         console.log("Answer submission result:", result);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         console.error("Error submitting answer:", error);
       }
@@ -215,103 +244,144 @@ export default function PlayPage() {
       if (!data.question || !data.question.id) {
         router.push(`/game/${gameCode}/results`);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Error moving to next question:", error);
     }
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
-      <div className="w-full max-w-xl bg-gray-800 bg-opacity-70 backdrop-filter backdrop-blur-lg rounded-xl shadow-2xl p-8 border border-purple-700/50 text-center">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
-            NexusQuiz - Round {currentQuestion.id || ""}
-          </h1>
-          <div className="text-sm bg-black text-green-400 px-3 py-1 rounded-md shadow-inner animate-pulse font-mono">
-            ⏳ {timeLeft}s
-          </div>
-        </div>
+  const Leaderboard = () => {
+    const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
 
-        <p className="text-xl font-semibold mb-4 text-purple-300">
-          {currentQuestion.text}
-        </p>
-
-        <div className="grid grid-cols-1 gap-4 mb-6">
-          {currentQuestion.options.map((option, index) => {
-            const isSelected = selectedOption === index;
-            const isCorrect = currentQuestion.correctIndex === index;
-            const isAnswerReveal = showResults;
-
-            const baseClass =
-              "px-6 py-4 rounded-lg text-lg font-medium transition-all duration-300";
-
-            let colorClass = "bg-gray-700";
-
-            if (isAnswerReveal) {
-              colorClass = isCorrect
-                ? "bg-green-600"
-                : isSelected
-                ? "bg-red-600"
-                : "bg-gray-700 opacity-50";
-            } else if (!answered) {
-              colorClass = "hover:bg-purple-600";
-            } else if (isSelected) {
-              colorClass = "bg-gray-600";
-            }
-
-            return (
-              <button
-                key={index}
-                disabled={answered || isAnswerReveal}
-                onClick={() => handleAnswer(index)}
-                className={`${baseClass} ${colorClass}`}
+    return (
+      <div className="mt-10 text-center font-mono">
+        <h3 className="text-2xl font-extrabold text-pink-400 mb-4">
+          🏆 <span className="tracking-wider">Leaderboard</span>
+        </h3>
+        <div className="bg-gray-900/60 border border-purple-700 rounded-2xl p-6 shadow-lg max-w-md mx-auto">
+          <ul className="space-y-3">
+            {sorted.map((p, idx) => (
+              <li
+                key={p.id}
+                className="flex justify-between items-center bg-gray-800 px-4 py-2 rounded-xl text-white font-mono text-sm shadow-sm"
               >
-                {option}
-              </button>
-            );
-          })}
+                <span className="text-purple-400">#{idx + 1}</span>
+                <span>
+                  {p.name}{" "}
+                  {p.name === playerName && (
+                    <span className="text-lime-400">(You)</span>
+                  )}
+                </span>
+                <span className="text-lime-400 font-bold">
+                  {p.score || 0} pts
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
+      </div>
+    );
+  };
 
-        {!showResults && answered && (
-          <p className="text-green-400 font-semibold animate-pulse">
-            Answer locked in! 🎉
-          </p>
-        )}
-
-        {showResults && (
-          <div className="mt-6 text-center">
-            <p className="text-lg font-bold text-green-400 mb-2">
-              ✅ Correct Answer:{" "}
-              {currentQuestion.options[currentQuestion.correctIndex]}
-            </p>
-            <div className="text-sm text-purple-300 italic">
-              <p className="mb-1">Players:</p>
-              <ul className="list-disc list-inside space-y-1">
-                {players.map((player) => (
-                  <li key={player.id} className="text-white">
-                    {player.name}{" "}
-                    {player.name === playerName && (
-                      <span className="text-green-400">(You)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {isHost && showResults && (
-          <button
-            onClick={handleNextQuestion}
-            className="mt-4 w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transform hover:scale-105 transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-400"
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-black via-purple-900 to-black text-white px-4 py-10 font-mono">
+      <div className="w-full max-w-3xl bg-[#151525]/80 backdrop-blur-xl rounded-3xl border border-purple-600">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentQuestion.id}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{ duration: 0.5 }}
+            className="p-8 md:p-10"
           >
-            Next Question
-          </button>
-        )}
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-500 via-purple-400 to-pink-500 text-transparent bg-clip-text animate-fade-in">
+                NexusQuiz
+                {currentQuestion.id > 0 && (
+                  <span className="text-2xl">
+                    {" "}
+                    - Round {currentQuestion.id}
+                  </span>
+                )}
+              </h1>
+              <div className="flex items-center gap-2 text-sm bg-black/80 text-lime-400 px-4 py-2 rounded-full shadow-inner font-mono animate-pulse border border-lime-500">
+                <span className="font-bold text-xs">TIME</span>
+                <span className="text-base font-bold">{timeLeft}s</span>
+              </div>
+            </div>
+
+            <div className="text-center mb-10">
+              <h2 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 via-pink-400 to-fuchsia-500 shadow-lg drop-shadow-xl animate-fade-in-slow">
+                {currentQuestion.text}
+              </h2>
+              <div className="w-24 h-1 mt-3 bg-gradient-to-r from-fuchsia-500 via-purple-500 to-pink-500 mx-auto rounded-full animate-pulse" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-5">
+              {currentQuestion.options.map((option, index) => {
+                const isSelected = selectedOption === index;
+                const isCorrect = currentQuestion.correctIndex === index;
+                const isAnswerReveal = showResults;
+                let colorClass = "bg-gray-800 border-gray-700";
+
+                if (isAnswerReveal) {
+                  colorClass = isCorrect
+                    ? "bg-green-600 border-green-400 text-white"
+                    : isSelected
+                    ? "bg-red-600 border-red-400 text-white"
+                    : "bg-gray-800 border-gray-600 opacity-50 text-gray-300";
+                } else if (!answered) {
+                  colorClass =
+                    "hover:bg-purple-600 hover:border-purple-500 text-white";
+                } else if (isSelected) {
+                  colorClass = "bg-gray-700 border-purple-500 text-white";
+                }
+
+                return (
+                  <button
+                    key={index}
+                    disabled={answered || isAnswerReveal}
+                    onClick={() => handleAnswer(index)}
+                    className={`w-full px-6 py-4 rounded-xl text-lg font-semibold border ${colorClass}`}
+                  >
+                    {String.fromCharCode(65 + index)}. {option}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showResults && (
+              <>
+                <div className="mt-10 text-center">
+                  <p className="text-green-400 text-xl font-bold mb-6">
+                    ✔ Correct Answer:{" "}
+                    {currentQuestion.options[currentQuestion.correctIndex]}
+                  </p>
+                  <Leaderboard />
+                  {isHost && (
+                    <button
+                      onClick={handleNextQuestion}
+                      className="mt-6 bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white px-6 py-3 rounded-lg font-semibold border border-purple-300 hover:scale-105 transition"
+                    >
+                      Next Question →
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!showResults && answered && (
+              <div className="mt-6 text-center">
+                <p className="text-lime-400 text-lg font-bold">
+                  Locked In. Awaiting Results...
+                </p>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <footer className="mt-8 text-center text-gray-500 text-sm">
+      <footer className="mt-8 text-center text-gray-400 text-sm">
         Powered by Next.js & FastAPI | © {new Date().getFullYear()} NexusQuiz
       </footer>
     </div>
