@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 # ===== RAFT SETTINGS =====
 IS_LEADER = os.getenv("IS_LEADER", "false").lower() == "true"
-LEADER_HOST = os.getenv("LEADER_HOST", "http://localhost:8000")
+LEADER_HOST = os.getenv("LEADER_HOST", "http://localhost:8000").rstrip("/")
 
 # ====== FASTAPI SETUP ======
 app = FastAPI()
@@ -264,6 +264,7 @@ async def submit_answer(answer_request: SubmitAnswerRequest, request: Request):
             return SubmitAnswerResponse(correct=is_correct, score=player["score"])
 
     raise HTTPException(status_code=404, detail="Player not found in lobby")
+
 @app.on_event("startup")
 async def start_heartbeat_monitor():
     if not IS_LEADER:
