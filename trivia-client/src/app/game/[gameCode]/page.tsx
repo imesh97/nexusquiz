@@ -30,39 +30,49 @@ export default function LobbyPage() {
   }, [playerName, gameCodeParam, resetGame, router]);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/${gameCodeParam}`);
-
-    ws.onopen = () => {
-      console.log("WebSocket connected on lobby page");
-    };
-
-    ws.onmessage = (event) => {
+    const connectToLeaderWebSocket = async () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.event === "game_started") {
-          // When the game starts, navigate all clients to the play page
-          router.push(`/game/${gameCodeParam}/play`);
-        }
-        if (data.event === "player_joined") {
-          // Update the lobby players list in real time
-          setPlayers(data.players);
-        }
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
+        // Step 1: Ask any backend node for the current leader
+        const res = await fetch("http://localhost:8000/raft/leader"); // or your base backend URL
+        const data = await res.json();
+        const leaderHost = data.leader_url.replace(/^http/, "ws"); // Convert to ws://
+  
+        // Step 2: Open WebSocket on the RAFT leader
+        const ws = new WebSocket(`${leaderHost}/ws/${gameCodeParam}`);
+  
+        ws.onopen = () => {
+          console.log("WebSocket connected on lobby page");
+        };
+  
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "game_started") {
+              router.push(`/game/${gameCodeParam}/play`);
+            }
+            if (data.event === "player_joined") {
+              setPlayers(data.players);
+            }
+          } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+          }
+        };
+  
+        ws.onerror = (err) => {
+          console.error("WebSocket error:", err);
+        };
+  
+        ws.onclose = () => {
+          console.log("WebSocket connection closed on lobby page");
+        };
+      } catch (e) {
+        console.error("Failed to connect to WebSocket:", e);
       }
     };
-
-    ws.onerror = (err) => {
-      if (JSON.stringify(err) === "{}") return;
-      console.error("WebSocket error:", err);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket connection closed on lobby page");
-    };
-
-    return () => ws.close();
+  
+    connectToLeaderWebSocket();
   }, [gameCodeParam, router, setPlayers]);
+  
 
   // Function for the host to start the game
   const handleStartGame = async () => {

@@ -78,59 +78,70 @@ export default function PlayPage() {
 
   // WebSocket connection for game events
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/${gameCode}`);
-
-    ws.onopen = () => {
-      console.log("WebSocket connected on play page");
-    };
-
-    ws.onmessage = (event) => {
+    const connectToLeaderWebSocket = async () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.event === "score_update") {
-          setPlayers(data.players);
+        const res = await fetch("http://localhost:8000/raft/leader");
+        const data = await res.json();
+  
+        if (!data.leader_url) {
+          throw new Error("Missing leader_url from backend");
         }
-        if (data.event === "game_started") {
-          // Set the first question when the game starts
-          setCurrentQuestion(data.question);
-          setSelectedOption(null);
-          setAnswered(false);
-          setTimeLeft(TIMER_DURATION);
-          setShowResults(false);
-        }
-        if (data.event === "next_question") {
-          // If a valid question is sent, update state.
-          if (data.question && data.question.id) {
-            setCurrentQuestion(data.question);
-            setSelectedOption(null);
-            setAnswered(false);
-            setTimeLeft(TIMER_DURATION);
-            setShowResults(false);
-          } else {
-            // If no valid question, navigate to results
-            router.push(`/game/${gameCode}/results`);
+  
+        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const leaderHost = data.leader_url.replace(/^http/, wsProtocol);
+        const ws = new WebSocket(`${leaderHost}/ws/${gameCode}`);
+  
+        ws.onopen = () => {
+          console.log("✅ WebSocket connected on play page");
+        };
+  
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "score_update") {
+              setPlayers(data.players);
+            }
+            if (data.event === "game_started") {
+              setCurrentQuestion(data.question);
+              setSelectedOption(null);
+              setAnswered(false);
+              setTimeLeft(TIMER_DURATION);
+              setShowResults(false);
+            }
+            if (data.event === "next_question") {
+              if (data.question && data.question.id) {
+                setCurrentQuestion(data.question);
+                setSelectedOption(null);
+                setAnswered(false);
+                setTimeLeft(TIMER_DURATION);
+                setShowResults(false);
+              } else {
+                router.push(`/game/${gameCode}/results`);
+              }
+            }
+            if (data.event === "game_over") {
+              router.push(`/game/${gameCode}/results`);
+            }
+          } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
           }
-        }
-        if (data.event === "game_over") {
-          // When game over event is received, navigate to results page
-          router.push(`/game/${gameCode}/results`);
-        }
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
+        };
+  
+        ws.onerror = (event) => {
+          console.error("❌ WebSocket connection error on play page:", event);
+        };
+  
+        ws.onclose = () => {
+          console.log("🔌 WebSocket connection closed on play page");
+        };
+      } catch (e) {
+        console.error("❌ Failed to connect to WebSocket on play page:", e);
       }
     };
-
-    ws.onerror = (err) => {
-      if (JSON.stringify(err) === "{}") return;
-      console.error("WebSocket error:", err);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket connection closed on play page");
-    };
-
-    return () => ws.close();
+  
+    connectToLeaderWebSocket();
   }, [gameCode, router, setPlayers]);
+  
 
   // Function to submit an answer
   const handleAnswer = async (index: number) => {
