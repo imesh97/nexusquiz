@@ -121,9 +121,8 @@ export default function PlayPage() {
     };
 
     ws.onerror = (err) => {
-      if (err && Object.keys(err).length > 0) {
-        console.error("WebSocket error:", err);
-      }
+      if (JSON.stringify(err) === "{}") return;
+      console.error("WebSocket error:", err);
     };
 
     ws.onclose = () => {
