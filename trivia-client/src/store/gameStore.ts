@@ -5,6 +5,7 @@ export interface Player {
   id: string; // In real app, likely assigned by backend
   name: string;
   score: number;
+  lastAnswer?: number;
 }
 
 export type GameStatus = "joining" | "lobby" | "playing" | "finished" | "error";

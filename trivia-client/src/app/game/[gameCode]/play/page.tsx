@@ -12,7 +12,7 @@ interface Question {
   correctIndex: number;
 }
 
-const TIMER_DURATION = 10; // seconds
+const TIMER_DURATION = 5; // seconds
 
 export default function PlayPage() {
   const router = useRouter();
@@ -67,59 +67,100 @@ export default function PlayPage() {
   
 
   // Timer countdown
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      setShowResults(true);
-      return;
+  // Updated timer useEffect in PlayPage component
+useEffect(() => {
+  if (timeLeft <= 0) {
+    setShowResults(true);
+    
+    // If the user hasn't answered when timer expires, record it as unanswered
+    if (!answered) {
+      // Mark as answered but with no selection to indicate timeout
+      setAnswered(true);
+      setSelectedOption(null);
+      
+      // Submit a "no answer" to the backend
+      const submitNoAnswer = async () => {
+        try {
+          const leaderUrl = await getLeaderUrl();
+          await fetch(`${leaderUrl}/lobby/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code: gameCode,
+              player_id: playerId,
+              answer: -1, // -1 indicates no answer was selected
+            }),
+          });
+        } catch (error) {
+          console.error("Error submitting no answer:", error);
+        }
+      };
+      
+      submitNoAnswer();
     }
-    const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [timeLeft]);
+    return;
+  }
+  const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+  return () => clearTimeout(timer);
+}, [timeLeft, answered, gameCode, playerId]);
 
   // WebSocket connection for game events
-  useEffect(() => {
-    const connectToLeaderWebSocket = async () => {
-      try {
-        const leaderUrl = await getLeaderUrl();
-        const ws = new WebSocket(leaderUrl.replace("http", "ws") + `/ws/${gameCode}`);
-        
-        ws.onopen = () => console.log("✅ WebSocket connected on play page");
-  
-        ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.event === "score_update") setPlayers(data.players);
-          if (data.event === "game_started") {
+  // Updated WebSocket connection for game events
+useEffect(() => {
+  const connectToLeaderWebSocket = async () => {
+    try {
+      const leaderUrl = await getLeaderUrl();
+      const ws = new WebSocket(leaderUrl.replace("http", "ws") + `/ws/${gameCode}`);
+      
+      ws.onopen = () => console.log("✅ WebSocket connected on play page");
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.event === "score_update") {
+          console.log("Received player data:", data.players);
+          setPlayers(data.players as any[]); // Simple type assertion
+        }
+
+        if (data.event === "game_started") {
+          setCurrentQuestion(data.question);
+          setSelectedOption(null);
+          setAnswered(false);
+          setTimeLeft(TIMER_DURATION);
+          setShowResults(false);
+        }
+        if (data.event === "next_question") {
+          if (data.question?.id) {
             setCurrentQuestion(data.question);
             setSelectedOption(null);
             setAnswered(false);
             setTimeLeft(TIMER_DURATION);
             setShowResults(false);
-          }
-          if (data.event === "next_question") {
-            if (data.question?.id) {
-              setCurrentQuestion(data.question);
-              setSelectedOption(null);
-              setAnswered(false);
-              setTimeLeft(TIMER_DURATION);
-              setShowResults(false);
-            } else {
-              router.push(`/game/${gameCode}/results`);
-            }
-          }
-          if (data.event === "game_over") {
+          } else {
             router.push(`/game/${gameCode}/results`);
           }
-        };
-  
-        ws.onerror = (event) => console.error("❌ WebSocket error:", event);
-        ws.onclose = () => console.log("🔌 WebSocket closed on play page");
-      } catch (e) {
-        console.error("❌ Failed to connect to WebSocket:", e);
-      }
-    };
-  
-    connectToLeaderWebSocket();
-  }, [gameCode, router, setPlayers]);
+        }
+        if (data.event === "game_over") {
+          router.push(`/game/${gameCode}/results`);
+        }
+        // Handle timeout event if all players haven't answered when timer expires
+        if (data.event === "question_timeout") {
+          setShowResults(true);
+          if (!answered) {
+            setAnswered(true);
+            setSelectedOption(null);
+          }
+        }
+      };
+
+      ws.onerror = (event) => console.error("❌ WebSocket error:", event);
+      ws.onclose = () => console.log("🔌 WebSocket closed on play page");
+    } catch (e) {
+      console.error("❌ Failed to connect to WebSocket:", e);
+    }
+  };
+
+  connectToLeaderWebSocket();
+}, [gameCode, router, setPlayers, answered]);
   
   
 
@@ -249,21 +290,21 @@ export default function PlayPage() {
               {currentQuestion.options[currentQuestion.correctIndex]}
             </p>
             <div className="text-sm text-purple-300 italic">
-              <p className="mb-1">Players answered:</p>
+              <p className="mb-1">Players:</p>
               <ul className="list-disc list-inside space-y-1">
                 {players.map((player) => (
                   <li key={player.id} className="text-white">
                     {player.name}{" "}
                     {player.name === playerName && (
                       <span className="text-green-400">(You)</span>
-                    )}{" "}
-                    — <span className="italic text-gray-400">answered</span>
+                    )}
                   </li>
                 ))}
               </ul>
             </div>
           </div>
         )}
+
 
         {isHost && showResults && (
           <button
