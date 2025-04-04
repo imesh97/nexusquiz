@@ -40,7 +40,7 @@ export default function LobbyPage() {
         console.log(`Leader URL resolved: ${url}`);
         setLeaderUrl(url);
       } catch (err) {
-        console.error("Failed to resolve leader URL:", err);
+        console.warn("⚠️ Leader URL resolution issue:", err);
         setError("Could not connect to game server. Please try again.");
       }
     };
@@ -64,15 +64,18 @@ export default function LobbyPage() {
       }
     },
     onError: (err) => {
-      console.error("WebSocket error in lobby:", err);
-      setError("Connection error. Please try refreshing the page.");
+      // Only show errors if we've exceeded a certain threshold
+      if (connectionAttempts > 2) {
+        console.warn("⚠️ Connection issues, reconnecting...");
+        setError("Connection error. We're trying to reconnect...");
+      }
     },
     onOpen: () => {
       console.log("WebSocket connected in lobby");
       setError(null); // Clear any previous errors
     },
     onClose: () => {
-      console.log("WebSocket closed in lobby");
+      // Don't show any message on close as we'll auto-reconnect
     },
   });
 
@@ -113,8 +116,8 @@ export default function LobbyPage() {
       console.log("Game start request successful");
       // The game start event will be broadcast via WebSocket to all clients
     } catch (error: any) {
-      console.error("Start game failed:", error);
-      setError(error.message || "Error starting game. Please try again.");
+      console.warn("⚠️ Start game issue:", error);
+      setError(error.message || "Couldn't start game. Please try again.");
       
       // Try reconnecting WebSocket on error
       reconnect();
@@ -142,7 +145,7 @@ export default function LobbyPage() {
         </p>
         <p className="text-sm mt-2">
           <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-            isConnected ? 'bg-green-500' : 'bg-red-500'
+            isConnected ? 'bg-green-500' : connectionAttempts > 0 ? 'bg-yellow-500 animate-pulse' : 'bg-gray-500'
           }`}></span>
           {connectionStatus}
         </p>
@@ -191,11 +194,11 @@ export default function LobbyPage() {
         )}
 
         {error && (
-          <div className="mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded-lg">
-            <p className="text-red-400 text-center">{error}</p>
+          <div className="mt-4 p-3 bg-purple-900/50 border border-purple-500/50 rounded-lg">
+            <p className="text-purple-300 text-center">{error}</p>
             <button 
               onClick={reconnect}
-              className="mt-2 text-sm underline text-red-300 mx-auto block hover:text-red-200"
+              className="mt-2 text-sm underline text-purple-300 mx-auto block hover:text-purple-200"
             >
               Try reconnecting
             </button>

@@ -14,6 +14,7 @@ interface WebSocketHookOptions {
 
 /**
  * Custom hook for managing a resilient WebSocket connection to the game server
+ * with NO red error logs
  */
 export function useGameWebSocket({
   gameCode,
@@ -39,7 +40,6 @@ export function useGameWebSocket({
     }
     
     if (wsRef.current) {
-      console.log(`🔌 Closing WebSocket connection to ${gameCode}`);
       // Remove all event listeners to avoid memory leaks
       wsRef.current.onopen = null;
       wsRef.current.onclose = null;
@@ -60,24 +60,21 @@ export function useGameWebSocket({
     cleanup();
     
     try {
-      console.log(`🔄 Connecting to game ${gameCode}, attempt ${connectionAttempts + 1}`);
-      
       // Clear leader cache if this is a retry attempt
       if (connectionAttempts > 0) {
         clearLeaderCache();
       }
       
       const leaderUrl = await getLeaderUrl();
-      console.log(`📡 Got leader URL: ${leaderUrl}`);
       
       const wsUrl = `${leaderUrl.replace(/^http/, "ws")}/ws/${gameCode}`;
-      console.log(`🔌 Opening WebSocket connection to ${wsUrl}`);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
       ws.onopen = () => {
-        console.log(`✅ WebSocket connected to ${gameCode}`);
+        // Only show connection success logs
+        console.log(`✅ WebSocket connected to game ${gameCode}`);
         setIsConnected(true);
         setConnectionAttempts(0);
         setError(null);
@@ -87,21 +84,25 @@ export function useGameWebSocket({
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log(`📩 WebSocket message received:`, data);
           if (onMessage) onMessage(data);
         } catch (err) {
-          console.error(`❌ Error parsing WebSocket message:`, err);
+          // Use warn instead of error to avoid red text
+          console.warn(`⚠️ Issue parsing WebSocket message:`, err);
         }
       };
       
       ws.onerror = (err) => {
-        console.error(`❌ WebSocket error:`, err);
-        setError(new Error('WebSocket connection error'));
-        if (onError) onError(err);
+        // Skip empty errors entirely
+        const isEmptyError = !err || JSON.stringify(err) === '{}';
+        
+        // Still set the error state but don't show it in console
+        setError(new Error('Connection issue'));
+        
+        // Only forward non-empty errors to caller
+        if (onError && !isEmptyError) onError(err);
       };
       
       ws.onclose = (event) => {
-        console.log(`🔌 WebSocket connection closed: ${event.code} - ${event.reason}`);
         setIsConnected(false);
         
         if (onClose) onClose();
@@ -116,15 +117,15 @@ export function useGameWebSocket({
           const jitter = Math.random() * 1000;
           const delay = baseDelay + jitter;
           
-          console.log(`🔄 Will try reconnecting in ${delay.toFixed(0)}ms (attempt ${nextAttempt}/${maxReconnectAttempts})`);
-          
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
         }
       };
     } catch (err) {
-      console.error(`❌ Failed to establish WebSocket connection:`, err);
+      // Use warn instead of error to avoid red text
+      console.warn(`⚠️ Connection setup issue:`, err);
+      
       setError(err instanceof Error ? err : new Error('Connection failed'));
       if (onError) onError(err);
       
@@ -134,7 +135,6 @@ export function useGameWebSocket({
         setConnectionAttempts(nextAttempt);
         
         const delay = Math.min(1000 * Math.pow(1.5, nextAttempt), 10000);
-        console.log(`🔄 Will try reconnecting in ${delay}ms (attempt ${nextAttempt}/${maxReconnectAttempts})`);
         
         reconnectTimeoutRef.current = setTimeout(() => {
           connect();
