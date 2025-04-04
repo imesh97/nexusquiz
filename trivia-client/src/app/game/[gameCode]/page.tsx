@@ -11,6 +11,7 @@ export default function LobbyPage() {
   const params = useParams();
   const router = useRouter();
   const gameCodeParam = params?.gameCode as string;
+  const [leaderUrl, setLeaderUrl] = useState<string | null>(null);
 
   const playerName = useGameStore((state) => state.playerName);
   const playerId = useGameStore((state) => state.playerId); // ensure you save newPlayerId here
@@ -32,10 +33,12 @@ export default function LobbyPage() {
   }, [playerName, gameCodeParam, resetGame, router]);
 
   useEffect(() => {
-    const connectToLeaderWebSocket = async () => {
+    const resolveLeaderAndConnect = async () => {
       try {
-        const leaderUrl = await getLeaderUrl();
-        const ws = new WebSocket(leaderUrl.replace(/^http/, "ws") + `/ws/${gameCodeParam}`);
+        const url = await getLeaderUrl();
+        setLeaderUrl(url);
+  
+        const ws = new WebSocket(url.replace(/^http/, "ws") + `/ws/${gameCodeParam}`);
   
         ws.onopen = () => {
           console.log("✅ WebSocket connected on lobby page");
@@ -64,24 +67,30 @@ export default function LobbyPage() {
         };
       } catch (e) {
         console.error("❌ Failed to connect to WebSocket:", e);
+        setError("Could not connect to game server.");
       }
     };
   
-    connectToLeaderWebSocket();
+    resolveLeaderAndConnect();
   }, [gameCodeParam, router, setPlayers]);
+  
   
   
 
   // Function for the host to start the game
   const handleStartGame = async () => {
     try {
-      const leaderUrl = await getLeaderUrl();
+      if (!leaderUrl) {
+        setError("Leader not resolved yet.");
+        return;
+      }
+      
       const response = await fetch(`${leaderUrl}/lobby/start`, {
-
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: gameCodeParam, player_id: playerId }),
       });
+      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || "Failed to start game");

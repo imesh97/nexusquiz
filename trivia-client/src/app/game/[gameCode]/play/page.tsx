@@ -45,12 +45,10 @@ export default function PlayPage() {
   useEffect(() => {
     async function fetchLobbyState() {
       try {
-        const response = await fetch(
-          `http://localhost:8000/lobby/state/${gameCode}`
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch lobby state");
-        }
+        const leaderUrl = await getLeaderUrl(); // ✅ dynamic leader
+        const response = await fetch(`${leaderUrl}/lobby/state/${gameCode}`);
+        if (!response.ok) throw new Error("Failed to fetch lobby state");
+  
         const data = await response.json();
         if (data.status === "playing" && data.question && data.question.id) {
           setCurrentQuestion(data.question);
@@ -63,8 +61,10 @@ export default function PlayPage() {
         console.error("Error fetching lobby state:", error);
       }
     }
+  
     fetchLobbyState();
   }, [gameCode]);
+  
 
   // Timer countdown
   useEffect(() => {

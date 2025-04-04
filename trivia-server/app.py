@@ -29,12 +29,13 @@ current_leader: str = f"http://localhost:{min(NODE_LIST)}"  # Initial assumption
 # ===== FASTAPI SETUP =====
 app = FastAPI()
 app.add_middleware(
-    CORSMiddleware, 
-    allow_origins=["*"],
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # 👈 your Next.js dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ===== STATE =====
 questions = [
@@ -93,6 +94,11 @@ def get_responsible_node(key: str):
         if key_hash <= h:
             return node
     return hash_ring[0][1]
+async def replicate_lobby_immediate(code: str, lobby_data: dict):
+    for node in NODE_URLS:
+        if node != get_self_url():
+            print(f"[{PORT}] 🔁 (awaited) Replicating lobby {code} to {node}")
+            await send_replica(code, lobby_data, node)
 
 async def broadcast_to_lobby(code: str, message: dict):
     if code in lobby_connections:
@@ -113,14 +119,18 @@ async def forward_to_leader(request: Request):
 def replicate_lobby(code: str, lobby_data: dict):
     for node in NODE_URLS:
         if node != get_self_url():
+            print(f"[{PORT}] 🔁 Replicating lobby {code} to {node}")
             asyncio.create_task(send_replica(code, lobby_data, node))
+
 
 async def send_replica(code: str, lobby_data: dict, node_url: str):
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(f"{node_url}/internal/replica/{code}", json=lobby_data)
-    except Exception:
-        print(f"[WARN] Failed to replicate to {node_url}")
+            res = await client.post(f"{node_url}/internal/replica/{code}", json=lobby_data)
+            print(f"[{PORT}] ✅ Replica sent to {node_url} → {res.status_code}")
+    except Exception as e:
+        print(f"[WARN] Failed to replicate to {node_url}: {e}")
+
 
 def get_self_url():
     return f"http://localhost:{PORT}"
@@ -184,9 +194,17 @@ async def heartbeat_loop():
         if new_role != last_role or first_run:
             if new_role == "LEADER":
                 print(f"[{self_url}] 🚩 I am now the LEADER")
+                print(f"[{self_url}] 🔁 Promoting replicas to active lobbies...")
+                for code, lobby_data in replica_store.items():
+                    if code not in lobbies:
+                        print(f"[{PORT}] ⬆️ Promoting replica lobby {code} to active")
+                        lobbies[code] = lobby_data
+                        await broadcast_to_lobby(code, {"event": "replica_promoted", "players": lobby_data["players"]})
+
             else:
                 print(f"[{self_url}] 🧍‍♂️ I am now a FOLLOWER")
             last_role = new_role
+
 
         # ✅ Optional logging for followers
         if new_role == "FOLLOWER":
@@ -236,12 +254,14 @@ async def join_lobby(join_request: JoinRequest, request: Request):
         lobbies[code] = lobby
         is_host = True
 
-    replicate_lobby(code, lobby)
+    await replicate_lobby_immediate(code, lobby)
+
     await broadcast_to_lobby(code, {"event": "player_joined", "players": lobby["players"]})
     return JoinResponse(players=lobby["players"], newPlayerId=player_id, isHost=is_host)
 
 @app.post("/lobby/start", response_model=StartGameResponse)
 async def start_game(data: StartGameRequest, request: Request):
+    print(f"[{PORT}] 🔥 START GAME called for code {data.code} by player {data.player_id}")
     if not is_leader():
         response = await forward_to_leader(request)
         return response.json()
@@ -250,8 +270,12 @@ async def start_game(data: StartGameRequest, request: Request):
     if code not in lobbies:
         raise HTTPException(status_code=404, detail="Lobby not found")
     lobby = lobbies[code]
-    if lobby["host"] != player_id:
+    if not any(p["id"] == player_id for p in lobby["players"]):
+        raise HTTPException(status_code=403, detail="You are not in this lobby")
+
+    if player_id != lobby["host"]:
         raise HTTPException(status_code=403, detail="Only the host can start")
+
 
     lobby["status"] = "playing"
     lobby["current_question_index"] = 0
