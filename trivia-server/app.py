@@ -1,19 +1,12 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import time
-import random
-import asyncio
+from pydantic import BaseModel
 import uuid
-import json
-import uvicorn
 
-HEARTBEAT_INTERVAL = 0.5  # constants for RAFT (in seconds)
-ELECTION_TIMEOUT_MIN = 1.5
-ELECTION_TIMEOUT_MAX = 3.0
+app = FastAPI()
 
-app = FastAPI(title="Trivia Server")  # create FastAPI app
-
-app.add_middleware(  # enable CORS (so frontend connects)
+# CORS middleware
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -21,541 +14,234 @@ app.add_middleware(  # enable CORS (so frontend connects)
     allow_headers=["*"],
 )
 
-# TEMPORARY DATA MODELS (for testing)
-class Player:
-    def __init__(self, id, name, score=0):
-        self.id = id
-        self.name = name
-        self.score = score
-    
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "score": self.score
-        }
-    
-    @classmethod
-    def from_dict(cls, data):
-        return cls(
-            id=data["id"],
-            name=data["name"],
-            score=data.get("score", 0)
-        )
-
-class Question:
-    def __init__(self, id, question, options, answer):
-        self.id = id
-        self.question = question
-        self.options = options
-        self.answer = answer
-        
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "question": self.question,
-            "options": self.options,
-            "answer": self.answer
-        }
-        
-class Game:
-    def __init__(self, id, question_id, start_time, end_time):
-        self.id = id
-        self.question_id = question_id
-        self.start_time = start_time
-        self.end_time = end_time
-        
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "question_id": self.question_id,
-            "start_time": self.start_time,
-            "end_time": self.end_time
-        }
-        
-    @classmethod
-    def from_dict(cls, data):
-        return cls(
-            id=data["id"],
-            question_id=data["question_id"],
-            start_time=data["start_time"],
-            end_time=data["end_time"]
-        )
-
-class RaftNode:
-    def __init__(self, id, all_nodes):
-        self.id = id
-        self.all_nodes = all_nodes
-        
-        self.current_term = 0  # initial RAFT state
-        self.voted_for = None
-        self.log = []
-        self.commit_index = 0
-        self.last_applied = 0
-        
-        self.role = "follower"  # initial RAFT role
-        self.leader_id = None
-
-        self.last_heartbeat = time.time()  # initial election timer
-        self.election_timeout = random.uniform(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
-
-        self.connections = {}  # id -> websocket connection
-
-        self.players = {}  # player_id -> Player
-        self.active_game = None  # initial game state
-
-node = None  # instance for RAFT node
-connected_players = {}  # track active player connections (player_id -> websocket)
-questions = [  # temp question list
-    Question(
-        id=1,
-        question="What is 9 + 10?",
-        options=["19", "21", "22", "23"],
-        answer="19"
-    ),
-    Question(
-        id=2,
-        question="Out of these rappers, who has the most Grammy award wins?",
-        options=["Drake", "Kendrick Lamar", "Lil Wayne", "Eminem"],
-        answer=["Kendrick Lamar"]
-    ),
-    Question(
-        id=3,
-        question="What is the chemical symbol for Potassium?",
-        options=["Po", "Na", "Mg", "K"],
-        answer=["K"]
-    ),
-    Question(
-        id=4,
-        question="Which makeup product is generally applied under the eyes?",
-        options=["Foundation", "Concealer", "Bronzer", "Eyeshadow"],
-        answer=["Concealer"]
-    ),
-    Question(
-        id=5,
-        question="Which country is considered an island?",
-        options=["Russia", "Canada", "Kazakhstan", "Sri Lanka"],
-        answer=["Sri Lanka"]
-    )
+# Global questions list for the game
+questions = [
+    {
+        "id": 1,
+        "text": "What is the capital of France?",
+        "options": ["Madrid", "Berlin", "Paris", "Rome"],
+        "correctIndex": 2,
+    },
+    {
+        "id": 2,
+        "text": "What is 2 + 2?",
+        "options": ["3", "4", "5", "6"],
+        "correctIndex": 1,
+    },
+    {
+        "id": 3,
+        "text": "Which planet is known as the Red Planet?",
+        "options": ["Earth", "Mars", "Jupiter", "Venus"],
+        "correctIndex": 1,
+    }
 ]
 
-@app.on_event("startup")
-async def startup_event():
-    global node
+# Models for joining a lobby
+class JoinRequest(BaseModel):
+    nickname: str
+    code: str
 
-    node_id = str(uuid.uuid4())  # random UUID
-    all_nodes = [node_id]  # single node setup for now
+class JoinResponse(BaseModel):
+    players: list
+    newPlayerId: str
+    isHost: bool
 
-    node = RaftNode(node_id, all_nodes)  # initialize node
+# Models for starting the game
+class StartGameRequest(BaseModel):
+    code: str
+    player_id: str
 
-    asyncio.create_task(raft_election_timer())  # background tasks
-    asyncio.create_task(raft_leader_tasks())
-    asyncio.create_task(commited_entries())
+class StartGameResponse(BaseModel):
+    message: str
+    question: dict
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the Trivia Server!", "status": "success"}
+# Models for next question endpoint
+class NextQuestionRequest(BaseModel):
+    code: str
+    player_id: str
 
-@app.get("/status")
-async def get_status():
-    if not node:
-        raise HTTPException(status_code=503, detail="Node not initialized")
-    
+class NextQuestionResponse(BaseModel):
+    message: str
+    question: dict
+
+# Models for answer submission
+class SubmitAnswerRequest(BaseModel):
+    code: str
+    player_id: str
+    answer: int
+
+class SubmitAnswerResponse(BaseModel):
+    correct: bool
+    score: int
+
+class EndGameRequest(BaseModel):
+    code: str
+    player_id: str
+
+# In-memory store for lobbies
+lobbies = {}
+
+# In-memory store for WebSocket connections per lobby
+lobby_connections = {}
+
+async def broadcast_to_lobby(code: str, message: dict):
+    """Broadcast a message to all WebSocket clients in a lobby."""
+    if code in lobby_connections:
+        for connection in lobby_connections[code]:
+            await connection.send_json(message)
+
+@app.get("/lobby/state/{code}")
+async def get_lobby_state(code: str):
+    code = code.upper().strip()
+    if code not in lobbies:
+        raise HTTPException(status_code=404, detail="Lobby not found")
+    lobby = lobbies[code]
     return {
-        "id": node.id,
-        "role": node.role,
-        "leader": node.leader_id,
-        "term": node.current_term,
-        "players": node.players,
-        "active_game": node.active_game is not None
+        "status": lobby["status"],
+        "question": lobby.get("question", {})
     }
 
-@app.get("/players")
-async def get_players():
-    if not node:
-        raise HTTPException(status_code=503, detail="Node not initialized")
+@app.post("/lobby/end")
+async def end_game(end_request: EndGameRequest):
+    code = end_request.code.upper().strip()
+    player_id = end_request.player_id.strip()
     
-    return {
-        "players": [player.to_dict() for player in node.players.values()]
-    }
-
-async def append_to_log(entry):
-    if node.role != "leader":  # only leader can append to log
-        return False
+    if code not in lobbies:
+        raise HTTPException(status_code=404, detail="Lobby not found")
     
-    entry["term"] = node.current_term  # add term
-    node.log.append(entry)
+    lobby = lobbies[code]
+    if lobby.get("host") != player_id:
+        raise HTTPException(status_code=403, detail="Only the host can end the game")
     
-    for id in node.all_nodes:  # send append entries to all nodes
-        try:
-            if id == node.id:  # skip self
-                continue
-
-            if id in node.connections:  # check if connection exists
-                ws = node.connections[id]  # get connection
-                
-                await ws.send_text(json.dumps({  # send append entries
-                    "type": "append_entries",
-                    "term": node.current_term,
-                    "leader_id": node.id,
-                    "prev_log_index": len(node.log) - 2 if len(node.log) > 1 else -1,
-                    "prev_log_term": node.log[-2]["term"] if len(node.log) > 1 else None,
-                    "entries": [entry],
-                    "leader_commit": node.commit_index
-                }))
-        
-        except Exception as e:  # handle errors
-            print(f"Error sending append entries to {id}: {e}")
-            return False
+    # Broadcast the game_closed event to all connected clients
+    await broadcast_to_lobby(code, {"event": "game_closed"})
     
-    node.commit_index = len(node.log) - 1  # update commit index
-    return True
-
-async def notify_players(message, exclude=None):
-    message_json = json.dumps(message)  # get JSON
-
-    for player_id, websocket in list(connected_players.items()):  # notify all players
-        if exclude and player_id == exclude:  # exclude specific player
-            continue
-
-        try:
-            await websocket.send_text(message_json)  # send message
-        
-        except Exception as e:  # handle connection errors -> remove player
-            if player_id in connected_players:
-                del connected_players[player_id]
-
-async def start_new_game():
-    if node.role != "leader":  # only leader can start game
-        return
+    # Optionally remove the lobby from memory to “close” the game
+    del lobbies[code]
     
-    question_id = random.randint(0, len(questions) - 1)  # random question
-    game_id = str(uuid.uuid4())  # random game UUID
-    start_time = time.time()  # current time
+    return {"message": "Game ended"}
 
-    game_data = {  # create game obj
-        "id": game_id,
-        "question_id": question_id,
-        "start_time": start_time,
-        "end_time": start_time + 30
-    }
-
-    node.active_game = Game(**game_data)  # create and set active game
-
-    await append_to_log({  # append to log
-        "action": "start_game",
-        "game": game_data
-    })
-
-    question = questions[question_id]  # get question
-    await notify_players({  # notify question to all players
-        "type": "new_question",
-        "question": question.question,
-        "options": question.options,
-        "question_id": question_id,
-        "time_limit": 30
-    })
-
-    asyncio.create_task(schedule_next_game())  # schedule next question
-
-async def schedule_next_game():
-    if node.active_game:  # wait to current game to end (plus 5 seconds)
-        wait_time = (node.active_game.end_time - time.time()) + 5
-        if wait_time > 0:
-            await asyncio.sleep(wait_time)
+@app.post("/lobby/join", response_model=JoinResponse)
+async def join_lobby(join_request: JoinRequest):
+    code = join_request.code.upper().strip()
+    nickname = join_request.nickname.strip()
+    if not code or not nickname:
+        raise HTTPException(status_code=400, detail="Nickname and code are required")
     
-    if node.role == "leader":
-        await start_new_game()
+    # Check for duplicate name if lobby already exists
+    if code in lobbies:
+        lobby = lobbies[code]
+        if any(player["name"].lower() == nickname.lower() for player in lobby["players"]):
+            raise HTTPException(status_code=400, detail="Nickname already in use")
+        new_player_id = str(uuid.uuid4())
+        lobby["players"].append({"id": new_player_id, "name": nickname, "score": 0})
+        is_host = False
+    else:
+        new_player_id = str(uuid.uuid4())
+        lobby = {
+            "players": [{"id": new_player_id, "name": nickname, "score": 0}],
+            "host": new_player_id,  # first player is host
+            "status": "lobby",
+            "current_question_index": -1,
+        }
+        lobbies[code] = lobby
+        is_host = True
 
-@app.websocket("/ws/player")
-async def ws_player(websocket: WebSocket):
-    await websocket.accept()  # accept connection
-    id = str(uuid.uuid4())  # random player UUID
-
-    try:
-        await websocket.send_text(json.dumps({  # send connection established message
-            "type": "connection_established",
-            "id": id
-        }))
-
-        while True:
-            data = await websocket.receive_text()  # receive message json
-            message = json.loads(data)
-
-            if message["type"] == "join":  # handle join message
-                name = message.get("name", f"Player_{id[:6]}")
-
-                player = Player(id=id, name=name, score=0)  # create and add Player
-                node.players[id] = player
-                connected_players[id] = websocket
-
-                if node.role == "leader":  # append to log if leader
-                    await append_to_log({
-                        "action": "add_player",
-                        "player": player.to_dict()
-                    })
-
-                await websocket.send_text(json.dumps({  # send welcome message with curr state
-                    "type": "welcome",
-                    "player": player.to_dict(),
-                    "players": [p.to_dict() for p in node.players.values()],
-                    "active_game": node.active_game.to_dict() if node.active_game else None
-                }))
-
-                await notify_players({  # notify other players
-                    "type": "player_joined",
-                    "player": player.to_dict()
-                }, exclude=id)
-
-            elif message["type"] == "start_game":  # handle start game message
-                if node.role == "leader":  # only leader can start game
-                    await start_new_game()
-
-            elif message["type"] == "answer":  # handle answer message
-                question_id = message.get("question_id")  # question and answer ids
-                answer_id = message.get("answer_id")
-
-                # check if game is active and current question matches
-                if (node.active_game and node.active_game.question_id == question_id and time.time() < node.active_game.end_time):
-                    question = questions[question_id]
-                    correct = question.answer == answer_id  # check if answer is correct
-
-                    if correct and id in node.players:  # if correct, update player score
-                        player = node.players[id]
-                        player.score += 10  # add 10 points
-
-                        if node.role == "leader":  # append to log if leader
-                            await append_to_log({
-                                "action": "update_score",
-                                "player_id": id,
-                                "score": player.score
-                            })
-                    
-                    await websocket.send_text(json.dumps({  # send update score message
-                        "type": "update_score",
-                        "correct": correct,
-                        "score": node.players[id].score if id in node.players else 0
-                    }))
-
-                    await notify_players({  # notify updated scores
-                        "type": "leaderboard",
-                        "players": [p.to_dict() for p in node.players.values()]
-                    })
+    await broadcast_to_lobby(code, {"event": "player_joined", "players": lobby["players"]})
     
-    except WebSocketDisconnect:  # handle websocket disconnect
-        print(f"Player {id} disconnected")
+    return JoinResponse(players=lobby["players"], newPlayerId=new_player_id, isHost=is_host)
+
+
+@app.post("/lobby/start", response_model=StartGameResponse)
+async def start_game(start_request: StartGameRequest):
+    code = start_request.code.upper().strip()
+    player_id = start_request.player_id.strip()
+
+    if code not in lobbies:
+        raise HTTPException(status_code=404, detail="Lobby not found")
+
+    lobby = lobbies[code]
+    if lobby.get("host") != player_id:
+        raise HTTPException(status_code=403, detail="Only the host can start the game")
     
-    except Exception as e:  # handle general errors
-        print(f"Error handling WebSocket: {e}")
+    lobby["status"] = "playing"
+    lobby["current_question_index"] = 0
+    lobby["question"] = questions[0]
 
-    finally:
-        # cleanup
-        if id in connected_players:
-            del connected_players[id]
-        if id in node.players:
-            del node.players[id]
-
-            if node.role == "leader":  # append to log if leader
-                await append_to_log({
-                    "action": "remove_player",
-                    "player_id": id
-                })
-            
-            await notify_players({  # notify other players
-                "type": "player_left",
-                "player_id": id
-            }, exclude=id)
-
-@app.websocket("/ws/node/{node_id}")
-async def ws_node(websocket: WebSocket, node_id: str):
-    await websocket.accept()  # accept connection
+    await broadcast_to_lobby(code, {"event": "game_started", "question": questions[0]})
     
-    node.connections[node_id] = websocket  # register connection
+    return StartGameResponse(message="Game started", question=questions[0])
 
+@app.post("/lobby/next", response_model=NextQuestionResponse)
+async def next_question(request: NextQuestionRequest):
+    code = request.code.upper().strip()
+    player_id = request.player_id.strip()
+
+    if code not in lobbies:
+        raise HTTPException(status_code=404, detail="Lobby not found")
+    lobby = lobbies[code]
+    if lobby.get("host") != player_id:
+        raise HTTPException(status_code=403, detail="Only the host can trigger next question")
+    if lobby.get("status") != "playing":
+        raise HTTPException(status_code=400, detail="Game is not in progress")
+    
+    current_index = lobby.get("current_question_index", 0)
+    new_index = current_index + 1
+    if new_index >= len(questions):
+        # Broadcast a game over event to all connected clients
+        await broadcast_to_lobby(code, {"event": "game_over"})
+        return NextQuestionResponse(message="No more questions", question={})
+    
+    lobby["current_question_index"] = new_index
+    lobby["question"] = questions[new_index]
+    await broadcast_to_lobby(code, {"event": "next_question", "question": questions[new_index]})
+    return NextQuestionResponse(message="Next question started", question=questions[new_index])
+
+
+@app.post("/lobby/answer", response_model=SubmitAnswerResponse)
+async def submit_answer(answer_request: SubmitAnswerRequest):
+    code = answer_request.code.upper().strip()
+    player_id = answer_request.player_id.strip()
+    answer_index = answer_request.answer
+
+    if code not in lobbies:
+        raise HTTPException(status_code=404, detail="Lobby not found")
+    
+    lobby = lobbies[code]
+    if lobby.get("status") != "playing":
+        raise HTTPException(status_code=400, detail="Game has not started yet")
+    
+    question = lobby.get("question")
+    if not question:
+        raise HTTPException(status_code=400, detail="No question available")
+    
+    correct_index = question.get("correctIndex")
+    is_correct = (answer_index == correct_index)
+
+    # Update player's score
+    for player in lobby["players"]:
+        if player["id"] == player_id:
+            if is_correct:
+                player["score"] += 1
+            # Broadcast updated scoreboard
+            await broadcast_to_lobby(code, {"event": "score_update", "players": lobby["players"]})
+            return SubmitAnswerResponse(correct=is_correct, score=player["score"])
+    
+    raise HTTPException(status_code=404, detail="Player not found in lobby")
+
+@app.websocket("/ws/{code}")
+async def websocket_endpoint(websocket: WebSocket, code: str):
+    code = code.upper().strip()
+    await websocket.accept()
+    if code not in lobby_connections:
+        lobby_connections[code] = []
+    lobby_connections[code].append(websocket)
     try:
         while True:
-            data = await websocket.receive_text()  # receive message json
-            message = json.loads(data)
-
-            # handle RAFT messages
-            if message["type"] == "append_entries":
-                term = message.get("term", 0)  # process heartbeat/log entries
-                leader_id = message.get("leader_id")
-
-                if term >= node.current_term:  # sender's term is greater of equal -> acknowledge as leader
-                    node.current_term = term
-                    node.role = "follower"
-                    node.leader_id = leader_id
-                    node.last_heartbeat = time.time()
-                    
-                    entries = message.get("entries", [])  # process any entries
-                    if entries:
-                        node.log.extend(entries)
-                        
-                    await websocket.send_text(json.dumps({  # send success response
-                        "type": "append_entries_response",
-                        "term": node.current_term,
-                        "success": True
-                    }))
-                else:  # our term is greater -> reject
-                    await websocket.send_text(json.dumps({  # send failure response
-                        "type": "append_entries_response",
-                        "term": node.current_term,
-                        "success": False
-                    }))
-            
-            elif message["type"] == "request_vote":
-                term = message.get("term", 0)  # process vote request
-                candidate_id = message.get("candidate_id")
-                last_log_index = message.get("last_log_index", -1)
-                last_log_term = message.get("last_log_term", 0)
-
-                grant_vote = False
-                
-                if term > node.current_term:  # sender's term is greater -> become follower
-                    node.current_term = term
-                    node.voted_for = None
-                    node.role = "follower"
-                
-                if (node.voted_for is None or node.voted_for == candidate_id) and term >= node.current_term:  # check if voted for candidate
-                    last_log_term_x = node.log[-1].get("term", 0) if node.log else 0  # get last log term and index
-                    last_log_index_x = len(node.log) - 1
-
-                    if (last_log_term > last_log_term_x or (last_log_term == last_log_term_x and last_log_index >= last_log_index_x)):  # check if candidate log is up to date
-                        grant_vote = True  # grant vote
-                        node.voted_for = candidate_id
-                        node.last_heartbeat = time.time()  # reset timeout when voting
-                
-                await websocket.send_text(json.dumps({  # send request vote response
-                    "type": "request_vote_response",
-                    "term": node.current_term,
-                    "vote_granted": grant_vote
-                }))
-    
-    except Exception as e:  # handle general errors
-        print(f"Error handling WebSocket: {e}")
-
-    finally:
-        # cleanup
-        if node_id in node.connections:
-            del node.connections[node_id]
-
-async def start_election():
-    node.role = "candidate"  # become candidate
-    node.current_term += 1  # increment term
-    node.voted_for = node.id  # vote for self
-    print(f"{node.id} starting election in term {node.current_term}")
-
-    node.election_timeout = random.uniform(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)  # random election timeout
-    node.last_heartbeat = time.time()
-
-    votes = 1  # count votes
-    for id in node.all_nodes:
-        if id == node.id:  # skip self
-            continue
-        
-        if id in node.connections:  # check if connection exists
-            try:
-                ws = node.connections[id]  # get connection
-                await ws.send_text(json.dumps({  # send request vote
-                    "type": "request_vote",
-                    "term": node.current_term,
-                    "candidate_id": node.id,
-                    "last_log_index": len(node.log) - 1 if node.log else -1,
-                    "last_log_term": node.log[-1].get("term", 0) if node.log else 0
-                }))
-
-                response = await ws.receive_text()  # receive response data
-                data = json.loads(response)
-                if data.get("vote_granted"):
-                    votes += 1  # increment votes
-
-            except Exception as e:  # handle errors
-                print(f"Error sending request vote to {id}: {e}")
-
-    if votes > len(node.all_nodes) // 2:  # become leader if majority
-        await become_leader()
-
-
-async def raft_election_timer():
-    while True:
-        if node.role in ["follower", "candidate"]:  # check if follower or candidate
-            last_heartbeat_since = time.time() - node.last_heartbeat
-            if last_heartbeat_since > node.election_timeout:  # check if timeout
-                await start_election()  # start election
-
-        await asyncio.sleep(0.1)  # check every 100ms
-
-async def become_leader():
-    print(f"Node {node.id} won election in term {node.current_term}")
-    node.role = "leader"  # become leader
-    node.leader_id = node.id  # set leader id
-    node.last_heartbeat = time.time()  # reset heartbeat
-
-    await notify_players(
-        {"type": "new_leader", "leader_id": node.id}
-        )  # notify other nodes
-
-    await start_new_game()  # start new game
-
-async def raft_leader_tasks():
-    while True:
-        if node.role == "leader":
-            for id in node.all_nodes:  # send heartbeat to all followers
-                if id == node.id:  # skip self
-                    continue
-                
-                if id in node.connections:  # check if connection exists
-                    try:
-                        ws = node.connections[id]  # get connection
-                        await ws.send_text(json.dumps({  # send append entries
-                            "type": "append_entries",
-                            "term": node.current_term,
-                            "leader_id": node.id,
-                            "entries": []  # heartbeat (empty entries)
-                        }))
-                    
-                    except Exception as e:  # handle errors
-                        print(f"Error sending append entries to {id}: {e}")
-                    
-                await asyncio.sleep(HEARTBEAT_INTERVAL)  # heartbeat interval
-        else:  # follower or candidate
-            await asyncio.sleep(0.1)  # check every 100ms
-
-async def log_entry(entry):
-    action = entry.get("action")  # get action
-    
-    if action == "add_player":  # add player
-        player_data = entry.get("player")
-        player = Player.from_dict(player_data)
-        node.players[player.id] = player
-        
-    elif action == "remove_player":  # remove player
-        player_id = entry.get("player_id")
-        if player_id in node.players:
-            del node.players[player_id]
-
-    elif action == "update_score":  # update player score
-        player_id = entry.get("player_id")
-        score = entry.get("score")
-        if player_id in node.players:
-            node.players[player_id].score = score
-    
-    elif action == "start_game":  # start game
-        game_data = entry.get("game")
-        node.active_game = Game.from_dict(game_data)
-
-async def commited_entries():
-    while True:
-        if node.commit_index > node.last_applied:  # check if there are entries to apply
-            for i in range(node.last_applied + 1, node.commit_index + 1):  # apply entries
-                if i < len(node.log):
-                    entry = node.log[i]
-                    await log_entry(entry)  # apply entry
-            
-            node.last_applied = node.commit_index
-        
-        await asyncio.sleep(0.1)  # check every 100ms
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        lobby_connections[code].remove(websocket)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # run server (app)
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
