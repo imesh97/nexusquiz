@@ -1,61 +1,89 @@
 //src/app/game/[gameCode]/page.tsx
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useGameStore } from '@/store/gameStore';
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useGameStore } from "@/store/gameStore";
 
 export default function LobbyPage() {
   const params = useParams();
   const router = useRouter();
   const gameCodeParam = params?.gameCode as string;
 
-  // Individually subscribe to Zustand slices to avoid unnecessary re-renders
   const playerName = useGameStore((state) => state.playerName);
-  const storedGameCode = useGameStore((state) => state.gameCode);
+  const playerId = useGameStore((state) => state.playerId); // ensure you save newPlayerId here
   const players = useGameStore((state) => state.players);
+  const setPlayers = useGameStore((state) => state.setPlayers);
   const isHost = useGameStore((state) => state.isHost);
-  const gameStatus = useGameStore((state) => state.gameStatus);
-  const addPlayer = useGameStore((state) => state.addPlayer);
-  const startGame = useGameStore((state) => state.startGame);
   const resetGame = useGameStore((state) => state.resetGame);
 
-  // Redirect if accessed directly or invalid state
+  const [error, setError] = useState<string | null>(null);
+
+  // Redirect if lobby state is invalid (as in your previous implementation)
   useEffect(() => {
-    if (gameStatus === 'joining' || storedGameCode !== gameCodeParam) {
-      console.warn('Redirecting: Invalid lobby access or state mismatch.');
+    // (Your existing lobby access validation logic)
+    if (!playerName || !gameCodeParam) {
+      console.warn("Redirecting: Missing player or game info.");
       resetGame();
-      router.push('/');
-      return;
+      router.push("/");
     }
+  }, [playerName, gameCodeParam, resetGame, router]);
 
-    // Simulate bot joining after 3s
-    const timer = setTimeout(() => {
-      if (
-        gameStatus === 'lobby' &&
-        !players.some((p) => p.name === 'BotPlayer')
-      ) {
-        addPlayer({ id: crypto.randomUUID(), name: 'BotPlayer' });
+  useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:8000/ws/${gameCodeParam}`);
+
+    ws.onopen = () => {
+      console.log("WebSocket connected on lobby page");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.event === "game_started") {
+          // When the game starts, navigate all clients to the play page
+          router.push(`/game/${gameCodeParam}/play`);
+        }
+        if (data.event === "player_joined") {
+          // Update the lobby players list in real time
+          setPlayers(data.players);
+        }
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
       }
-    }, 3000);
+    };
 
-    if (gameStatus === 'playing') {
-      console.log('Navigating to game screen...');
-      router.push(`/game/${storedGameCode}/play`);
+    ws.onerror = (err) => {
+      if (err && Object.keys(err).length > 0) {
+        console.error("WebSocket error:", err);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket connection closed on lobby page");
+    };
+
+    return () => ws.close();
+  }, [gameCodeParam, router, setPlayers]);
+
+  // Function for the host to start the game
+  const handleStartGame = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/lobby/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: gameCodeParam, player_id: playerId }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to start game");
+      }
+      // The game start event will be broadcast via WebSocket to all clients
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error("Start game failed:", error);
+      setError(error.message || "Error starting game");
     }
-
-    return () => clearTimeout(timer);
-  }, [gameStatus, storedGameCode, gameCodeParam, players, addPlayer, router, resetGame]);
-
-  const handleStartGame = () => startGame();
-
-  if (gameStatus === 'joining' || storedGameCode !== gameCodeParam) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
-        <p className="text-xl animate-pulse">Loading Lobby...</p>
-      </div>
-    );
-  }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
@@ -64,7 +92,7 @@ export default function LobbyPage() {
           NexusQuiz Lobby
         </h1>
         <p className="text-xl text-purple-300 font-light">
-          Game Code:{' '}
+          Game Code:{" "}
           <span className="font-semibold tracking-widest bg-gray-800 px-3 py-1 rounded-md shadow-inner">
             {gameCodeParam}
           </span>
@@ -109,6 +137,8 @@ export default function LobbyPage() {
             Waiting for the host to start the game...
           </p>
         )}
+
+        {error && <p className="text-red-400 text-center mt-4">{error}</p>}
       </main>
 
       <footer className="mt-8 text-center text-gray-500 text-sm">
