@@ -1,5 +1,6 @@
 // src/app/page.tsx
 "use client";
+import { getLeaderUrl } from "@/utils/network";
 
 import { useState, useTransition } from "react"; // Import useTransition
 import { useRouter } from "next/navigation";
@@ -21,7 +22,9 @@ export default function JoinPage() {
   const resetGame = useGameStore((state: GameState) => state.resetGame); // Get reset action
 
   const joinLobby = async (gameCode: string, nickname: string) => {
-    const response = await fetch("http://localhost:8000/lobby/join", {
+    const leaderUrl = await getLeaderUrl();
+    const response = await fetch(`${leaderUrl}/lobby/join`, {
+
       method: "POST",
       headers: {
         "Content-Type": "application/json",

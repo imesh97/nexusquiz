@@ -1,6 +1,8 @@
 //src/app/game/[gameCode]/page.tsx
 "use client";
 
+import { getLeaderUrl } from "@/utils/network";
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
@@ -32,16 +34,11 @@ export default function LobbyPage() {
   useEffect(() => {
     const connectToLeaderWebSocket = async () => {
       try {
-        // Step 1: Ask any backend node for the current leader
-        const res = await fetch("http://localhost:8000/raft/leader"); // or your base backend URL
-        const data = await res.json();
-        const leaderHost = data.leader_url.replace(/^http/, "ws"); // Convert to ws://
-  
-        // Step 2: Open WebSocket on the RAFT leader
-        const ws = new WebSocket(`${leaderHost}/ws/${gameCodeParam}`);
+        const leaderUrl = await getLeaderUrl();
+        const ws = new WebSocket(leaderUrl.replace(/^http/, "ws") + `/ws/${gameCodeParam}`);
   
         ws.onopen = () => {
-          console.log("WebSocket connected on lobby page");
+          console.log("✅ WebSocket connected on lobby page");
         };
   
         ws.onmessage = (event) => {
@@ -59,25 +56,28 @@ export default function LobbyPage() {
         };
   
         ws.onerror = (err) => {
-          console.error("WebSocket error:", err);
+          console.error("❌ WebSocket error:", err);
         };
   
         ws.onclose = () => {
-          console.log("WebSocket connection closed on lobby page");
+          console.log("🔌 WebSocket connection closed on lobby page");
         };
       } catch (e) {
-        console.error("Failed to connect to WebSocket:", e);
+        console.error("❌ Failed to connect to WebSocket:", e);
       }
     };
   
     connectToLeaderWebSocket();
   }, [gameCodeParam, router, setPlayers]);
   
+  
 
   // Function for the host to start the game
   const handleStartGame = async () => {
     try {
-      const response = await fetch("http://localhost:8000/lobby/start", {
+      const leaderUrl = await getLeaderUrl();
+      const response = await fetch(`${leaderUrl}/lobby/start`, {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: gameCodeParam, player_id: playerId }),

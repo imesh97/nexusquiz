@@ -1,6 +1,6 @@
 // src/app/game/[gameCode]/play/page.tsx
 "use client";
-
+import { getLeaderUrl } from "@/utils/network";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
@@ -80,67 +80,47 @@ export default function PlayPage() {
   useEffect(() => {
     const connectToLeaderWebSocket = async () => {
       try {
-        const res = await fetch("http://localhost:8000/raft/leader");
-        const data = await res.json();
-  
-        if (!data.leader_url) {
-          throw new Error("Missing leader_url from backend");
-        }
-  
-        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const leaderHost = data.leader_url.replace(/^http/, wsProtocol);
-        const ws = new WebSocket(`${leaderHost}/ws/${gameCode}`);
-  
-        ws.onopen = () => {
-          console.log("✅ WebSocket connected on play page");
-        };
+        const leaderUrl = await getLeaderUrl();
+        const ws = new WebSocket(leaderUrl.replace("http", "ws") + `/ws/${gameCode}`);
+        
+        ws.onopen = () => console.log("✅ WebSocket connected on play page");
   
         ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.event === "score_update") {
-              setPlayers(data.players);
-            }
-            if (data.event === "game_started") {
+          const data = JSON.parse(event.data);
+          if (data.event === "score_update") setPlayers(data.players);
+          if (data.event === "game_started") {
+            setCurrentQuestion(data.question);
+            setSelectedOption(null);
+            setAnswered(false);
+            setTimeLeft(TIMER_DURATION);
+            setShowResults(false);
+          }
+          if (data.event === "next_question") {
+            if (data.question?.id) {
               setCurrentQuestion(data.question);
               setSelectedOption(null);
               setAnswered(false);
               setTimeLeft(TIMER_DURATION);
               setShowResults(false);
-            }
-            if (data.event === "next_question") {
-              if (data.question && data.question.id) {
-                setCurrentQuestion(data.question);
-                setSelectedOption(null);
-                setAnswered(false);
-                setTimeLeft(TIMER_DURATION);
-                setShowResults(false);
-              } else {
-                router.push(`/game/${gameCode}/results`);
-              }
-            }
-            if (data.event === "game_over") {
+            } else {
               router.push(`/game/${gameCode}/results`);
             }
-          } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+          }
+          if (data.event === "game_over") {
+            router.push(`/game/${gameCode}/results`);
           }
         };
   
-        ws.onerror = (event) => {
-          console.error("❌ WebSocket connection error on play page:", event);
-        };
-  
-        ws.onclose = () => {
-          console.log("🔌 WebSocket connection closed on play page");
-        };
+        ws.onerror = (event) => console.error("❌ WebSocket error:", event);
+        ws.onclose = () => console.log("🔌 WebSocket closed on play page");
       } catch (e) {
-        console.error("❌ Failed to connect to WebSocket on play page:", e);
+        console.error("❌ Failed to connect to WebSocket:", e);
       }
     };
   
     connectToLeaderWebSocket();
   }, [gameCode, router, setPlayers]);
+  
   
 
   // Function to submit an answer

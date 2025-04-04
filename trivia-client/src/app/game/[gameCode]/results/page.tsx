@@ -1,5 +1,6 @@
 "use client";
 
+import { getLeaderUrl } from "@/utils/network";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
@@ -16,36 +17,43 @@ export default function ResultsPage() {
 
   // Set up a WebSocket to listen for "game_closed" events
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/${gameCode}`);
-
-    ws.onopen = () => {
-      console.log("WebSocket connected on results page");
-    };
-
-    ws.onmessage = (event) => {
+    const connectToWebSocket = async () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.event === "game_closed") {
-          // When game_closed event is received, navigate to home screen
-          resetGame();
-          router.push("/");
-        }
+        const leaderUrl = await getLeaderUrl();
+        const ws = new WebSocket(leaderUrl.replace(/^http/, "ws") + `/ws/${gameCode}`);
+  
+        ws.onopen = () => {
+          console.log("✅ WebSocket connected on results page");
+        };
+  
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "game_closed") {
+              resetGame();
+              router.push("/");
+            }
+          } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+          }
+        };
+  
+        ws.onerror = (err) => {
+          if (JSON.stringify(err) === "{}") return;
+          console.error("❌ WebSocket error:", err);
+        };
+  
+        ws.onclose = () => {
+          console.log("🔌 WebSocket connection closed on results page");
+        };
       } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
+        console.error("❌ Failed to establish WebSocket on results page:", error);
       }
     };
-
-    ws.onerror = (err) => {
-      if (JSON.stringify(err) === "{}") return;
-      console.error("WebSocket error:", err);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket connection closed on results page");
-    };
-
-    return () => ws.close();
+  
+    connectToWebSocket();
   }, [gameCode, resetGame, router]);
+  
 
   // Handler for the host's "Play Again" (or end game) button
   const handleEndGame = async () => {
