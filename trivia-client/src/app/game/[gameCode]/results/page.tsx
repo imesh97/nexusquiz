@@ -7,12 +7,12 @@ import { useGameStore } from "@/store/gameStore";
 
 export default function ResultsPage() {
   const router = useRouter();
-  const gameCode = useGameStore((state) => state.gameCode); // Assume you store the game code in your global state
+  const gameCode = useGameStore((state) => state.gameCode);
   const players = useGameStore((state) => state.players);
   const isHost = useGameStore((state) => state.isHost);
   const resetGame = useGameStore((state) => state.resetGame);
 
-  // Sort players in descending order by score
+  // Descending order by score
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
 
   // Set up a WebSocket to listen for "game_closed" events
@@ -20,12 +20,14 @@ export default function ResultsPage() {
     const connectToWebSocket = async () => {
       try {
         const leaderUrl = await getLeaderUrl();
-        const ws = new WebSocket(leaderUrl.replace(/^http/, "ws") + `/ws/${gameCode}`);
-  
+        const ws = new WebSocket(
+          leaderUrl.replace(/^http/, "ws") + `/ws/${gameCode}`
+        );
+
         ws.onopen = () => {
           console.log("✅ WebSocket connected on results page");
         };
-  
+
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
@@ -37,23 +39,25 @@ export default function ResultsPage() {
             console.error("Error parsing WebSocket message:", error);
           }
         };
-  
+
         ws.onerror = (err) => {
           if (JSON.stringify(err) === "{}") return;
           console.error("❌ WebSocket error:", err);
         };
-  
+
         ws.onclose = () => {
           console.log("🔌 WebSocket connection closed on results page");
         };
       } catch (error) {
-        console.error("❌ Failed to establish WebSocket on results page:", error);
+        console.error(
+          "❌ Failed to establish WebSocket on results page:",
+          error
+        );
       }
     };
-  
+
     connectToWebSocket();
   }, [gameCode, resetGame, router]);
-  
 
   // Handler for the host's "Play Again" (or end game) button
   const handleEndGame = async () => {
@@ -71,9 +75,9 @@ export default function ResultsPage() {
         const errorData = await response.json();
         throw new Error(errorData.detail || "Failed to end game");
       }
-      // After successful end, reset the game state and navigate home.
       resetGame();
       router.push("/");
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Error ending game:", error);

@@ -1,4 +1,4 @@
-// src/app/game/[gameCode]/page.tsx
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { getLeaderUrl, clearLeaderCache } from "@/utils/network";
@@ -49,7 +49,12 @@ export default function LobbyPage() {
   }, []);
 
   // Use our custom WebSocket hook
-  const { isConnected, connectionAttempts, error: wsError, reconnect } = useGameWebSocket({
+  const {
+    isConnected,
+    connectionAttempts,
+    error: wsError,
+    reconnect,
+  } = useGameWebSocket({
     gameCode: gameCodeParam,
     autoReconnect: true,
     maxReconnectAttempts: 5,
@@ -83,52 +88,58 @@ export default function LobbyPage() {
   const handleStartGame = async () => {
     try {
       if (!leaderUrl) {
-        setError("Waiting for server connection. Please try again in a moment.");
+        setError(
+          "Waiting for server connection. Please try again in a moment."
+        );
         return;
       }
-      
-      console.log(`Starting game with code ${gameCodeParam} for player ${playerId}`);
-      
+
+      console.log(
+        `Starting game with code ${gameCodeParam} for player ${playerId}`
+      );
+
       // Clear leader cache before important API calls
       clearLeaderCache();
-      
+
       // Get fresh leader URL
       const freshLeaderUrl = await getLeaderUrl();
       console.log(`Using fresh leader URL for game start: ${freshLeaderUrl}`);
-      
+
       const response = await fetch(`${freshLeaderUrl}/lobby/start`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json",
+          Accept: "application/json",
         },
-        body: JSON.stringify({ 
-          code: gameCodeParam, 
-          player_id: playerId 
+        body: JSON.stringify({
+          code: gameCodeParam,
+          player_id: playerId,
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || "Failed to start game");
       }
-      
+
       console.log("Game start request successful");
       // The game start event will be broadcast via WebSocket to all clients
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.warn("⚠️ Start game issue:", error);
       setError(error.message || "Couldn't start game. Please try again.");
-      
+
       // Try reconnecting WebSocket on error
       reconnect();
     }
   };
 
   // Display connection status for debugging
-  const connectionStatus = connectionAttempts > 0 
-    ? `Reconnecting (${connectionAttempts}/5)...` 
-    : isConnected 
-      ? "Connected" 
+  const connectionStatus =
+    connectionAttempts > 0
+      ? `Reconnecting (${connectionAttempts}/5)...`
+      : isConnected
+      ? "Connected"
       : "Connecting...";
 
   return (
@@ -144,9 +155,15 @@ export default function LobbyPage() {
           </span>
         </p>
         <p className="text-sm mt-2">
-          <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-            isConnected ? 'bg-green-500' : connectionAttempts > 0 ? 'bg-yellow-500 animate-pulse' : 'bg-gray-500'
-          }`}></span>
+          <span
+            className={`inline-block w-3 h-3 rounded-full mr-2 ${
+              isConnected
+                ? "bg-green-500"
+                : connectionAttempts > 0
+                ? "bg-yellow-500 animate-pulse"
+                : "bg-gray-500"
+            }`}
+          ></span>
           {connectionStatus}
         </p>
       </header>
@@ -182,7 +199,7 @@ export default function LobbyPage() {
             onClick={handleStartGame}
             disabled={!isConnected}
             className={`w-full bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transform transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-400 ${
-              !isConnected ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+              !isConnected ? "opacity-50 cursor-not-allowed" : "hover:scale-105"
             }`}
           >
             Start Game!
@@ -196,7 +213,7 @@ export default function LobbyPage() {
         {error && (
           <div className="mt-4 p-3 bg-purple-900/50 border border-purple-500/50 rounded-lg">
             <p className="text-purple-300 text-center">{error}</p>
-            <button 
+            <button
               onClick={reconnect}
               className="mt-2 text-sm underline text-purple-300 mx-auto block hover:text-purple-200"
             >

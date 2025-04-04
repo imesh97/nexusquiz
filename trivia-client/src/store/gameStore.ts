@@ -1,4 +1,3 @@
-// src/store/gameStore.ts
 import { create } from "zustand";
 
 export interface Player {
@@ -28,8 +27,8 @@ export interface GameState {
     ownId: string,
     hostStatus: boolean
   ) => void;
-  addPlayer: (player: Player) => void; // For simulation or websocket updates
-  removePlayer: (playerId: string) => void; // For simulation or websocket updates
+  addPlayer: (player: Player) => void;
+  removePlayer: (playerId: string) => void;
   setHost: (isHost: boolean) => void;
   startGame: () => void;
   setError: (message: string | null) => void;
@@ -92,7 +91,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state: GameState) => ({
       players: state.players.filter((p) => p.id !== playerId),
       // Simple Host Reassignment Simulation: If the host leaves, assign the next player as host.
-      // A real backend would handle this more robustly.
       isHost:
         state.isHost && state.playerId === playerId
           ? state.players.filter((p) => p.id !== playerId)[0]?.id ===
@@ -106,8 +104,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   startGame: () => {
     if (get().isHost && get().gameStatus === "lobby") {
       console.log("Frontend: Simulating game start command...");
-      // In a real app, this would send a message to the server,
-      // and the server would broadcast the 'playing' state change to all clients.
       set({ gameStatus: "playing" });
       // TODO: Navigate to the actual game play screen
     }

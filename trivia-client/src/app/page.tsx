@@ -1,4 +1,3 @@
-// src/app/page.tsx
 "use client";
 import { getLeaderUrl } from "@/utils/network";
 
@@ -24,7 +23,6 @@ export default function JoinPage() {
   const joinLobby = async (gameCode: string, nickname: string) => {
     const leaderUrl = await getLeaderUrl();
     const response = await fetch(`${leaderUrl}/lobby/join`, {
-
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -64,8 +62,6 @@ export default function JoinPage() {
       } catch (error: any) {
         console.error("Join failed:", error);
         setError(error.message || "An unexpected error occurred.");
-        // Optionally reset the game state on failure
-        // resetGame();
       }
     });
   };

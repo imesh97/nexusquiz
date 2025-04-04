@@ -19,7 +19,7 @@ else:
     except:
         PORT = 8000
 # ===== CONFIG =====
- # Pass this via CLI: PORT=8001 uvicorn app:app
+ # via CLI: PORT=8001 uvicorn app:app
 NODE_LIST = [8000, 8001, 8002]  # Predefined ports for simplicity
 NODE_URLS = [f"http://localhost:{port}" for port in NODE_LIST]
 HEARTBEAT_TIMEOUT = 5  # seconds
@@ -30,7 +30,7 @@ current_leader: str = f"http://localhost:{min(NODE_LIST)}"  # Initial assumption
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 👈 your Next.js dev server
+    allow_origins=["*"],  # Next.js dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,9 +39,9 @@ app.add_middleware(
 
 # ===== STATE =====
 questions = [
-    {"id": 1, "text": "What is the capital of France?", "options": ["Madrid", "Berlin", "Paris", "Rome"], "correctIndex": 2},
-    {"id": 2, "text": "What is 2 + 2?", "options": ["3", "4", "5", "6"], "correctIndex": 1},
-    {"id": 3, "text": "Which planet is known as the Red Planet?", "options": ["Earth", "Mars", "Jupiter", "Venus"], "correctIndex": 1},
+    {"id": 1, "text": "What is the periodic symbol for Potassium?", "options": ["Po", "Pt", "K", "Kp"], "correctIndex": 2},
+    {"id": 2, "text": "What is 9 + 10?", "options": ["21", "19", "910", "109"], "correctIndex": 1},
+    {"id": 3, "text": "What is the first name of the soccer star Messi?", "options": ["Leo", "Lio", "Leonel", "Lionel"], "correctIndex": 3},
 ]
 lobbies: Dict[str, dict] = {}
 replica_store: Dict[str, dict] = {}
@@ -142,7 +142,6 @@ def get_self_url():
 
 def is_leader():
     return get_self_url() == current_leader
-  # Track if this node was leader/follower before
 
 last_role = None
 
@@ -153,7 +152,7 @@ async def heartbeat_loop():
     while True:
         self_url = get_self_url()
 
-        # ✅ Step 1: Check alive nodes (including self)
+        # Check alive nodes (including self)
         alive = []
         for port in NODE_LIST:
             try:
@@ -165,13 +164,13 @@ async def heartbeat_loop():
             except:
                 pass
 
-        # ✅ Step 2: Determine who should be leader
+        # Determine who should be leader
         if alive:
             lowest_alive = f"http://localhost:{min(alive)}"
         else:
             lowest_alive = self_url
 
-        # ✅ Step 3: If the current leader is dead OR there's a lower port alive → re-elect
+        # If the current leader is dead OR there's a lower port alive, then re-elect
         if current_leader not in [f"http://localhost:{p}" for p in alive] or current_leader != lowest_alive:
             print(f"[RAFT] ⚠️ Current leader down or outdated: {current_leader}")
             await asyncio.sleep(1.5)  # Small cooldown before promoting
@@ -194,7 +193,7 @@ async def heartbeat_loop():
             print(f"[RAFT] 🔁 New leader elected: {lowest_alive}")
             current_leader = lowest_alive
 
-        # ✅ Step 4: Determine and log current role
+        # Determine and log current role
         new_role = "LEADER" if self_url == current_leader else "FOLLOWER"
         if new_role != last_role or first_run:
             if new_role == "LEADER":
@@ -211,7 +210,7 @@ async def heartbeat_loop():
             last_role = new_role
 
 
-        # ✅ Optional logging for followers
+        # Optional logging for followers
         if new_role == "FOLLOWER":
             print(f"[FOLLOWER] ✅ Leader heartbeat OK: {current_leader}")
 
@@ -411,7 +410,7 @@ async def on_startup():
         print(f"[RAFT] 👑 Initial leader elected at startup: {current_leader}")
     else:
         print("[RAFT] ⚠️ No alive nodes found on startup. Defaulting to self.")
-        current_leader = self_url  # 👈 ensure this is explicit!
+        current_leader = self_url
 
     new_role = "LEADER" if self_url == current_leader else "FOLLOWER"
     if new_role != last_role:

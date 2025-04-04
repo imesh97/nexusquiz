@@ -48,7 +48,7 @@ export default function PlayPage() {
         const leaderUrl = await getLeaderUrl(); // ✅ dynamic leader
         const response = await fetch(`${leaderUrl}/lobby/state/${gameCode}`);
         if (!response.ok) throw new Error("Failed to fetch lobby state");
-  
+
         const data = await response.json();
         if (data.status === "playing" && data.question && data.question.id) {
           setCurrentQuestion(data.question);
@@ -61,108 +61,105 @@ export default function PlayPage() {
         console.error("Error fetching lobby state:", error);
       }
     }
-  
+
     fetchLobbyState();
   }, [gameCode]);
-  
 
   // Timer countdown
-  // Updated timer useEffect in PlayPage component
-useEffect(() => {
-  if (timeLeft <= 0) {
-    setShowResults(true);
-    
-    // If the user hasn't answered when timer expires, record it as unanswered
-    if (!answered) {
-      // Mark as answered but with no selection to indicate timeout
-      setAnswered(true);
-      setSelectedOption(null);
-      
-      // Submit a "no answer" to the backend
-      const submitNoAnswer = async () => {
-        try {
-          const leaderUrl = await getLeaderUrl();
-          await fetch(`${leaderUrl}/lobby/answer`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code: gameCode,
-              player_id: playerId,
-              answer: -1, // -1 indicates no answer was selected
-            }),
-          });
-        } catch (error) {
-          console.error("Error submitting no answer:", error);
-        }
-      };
-      
-      submitNoAnswer();
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      setShowResults(true);
+
+      // If the user hasn't answered when timer expires, record it as unanswered
+      if (!answered) {
+        setAnswered(true);
+        setSelectedOption(null);
+
+        // Submit "no answer" to backend
+        const submitNoAnswer = async () => {
+          try {
+            const leaderUrl = await getLeaderUrl();
+            await fetch(`${leaderUrl}/lobby/answer`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: gameCode,
+                player_id: playerId,
+                answer: -1, // -1 -> no answer
+              }),
+            });
+          } catch (error) {
+            console.error("Error submitting no answer:", error);
+          }
+        };
+
+        submitNoAnswer();
+      }
+      return;
     }
-    return;
-  }
-  const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-  return () => clearTimeout(timer);
-}, [timeLeft, answered, gameCode, playerId]);
+    const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [timeLeft, answered, gameCode, playerId]);
 
   // WebSocket connection for game events
-  // Updated WebSocket connection for game events
-useEffect(() => {
-  const connectToLeaderWebSocket = async () => {
-    try {
-      const leaderUrl = await getLeaderUrl();
-      const ws = new WebSocket(leaderUrl.replace("http", "ws") + `/ws/${gameCode}`);
-      
-      ws.onopen = () => console.log("✅ WebSocket connected on play page");
+  useEffect(() => {
+    const connectToLeaderWebSocket = async () => {
+      try {
+        const leaderUrl = await getLeaderUrl();
+        const ws = new WebSocket(
+          leaderUrl.replace("http", "ws") + `/ws/${gameCode}`
+        );
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.event === "score_update") {
-          console.log("Received player data:", data.players);
-          setPlayers(data.players as any[]); // Simple type assertion
-        }
+        ws.onopen = () => console.log("✅ WebSocket connected on play page");
 
-        if (data.event === "game_started") {
-          setCurrentQuestion(data.question);
-          setSelectedOption(null);
-          setAnswered(false);
-          setTimeLeft(TIMER_DURATION);
-          setShowResults(false);
-        }
-        if (data.event === "next_question") {
-          if (data.question?.id) {
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.event === "score_update") {
+            console.log("Received player data:", data.players);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            setPlayers(data.players as any[]); // Simple type assertion
+          }
+
+          if (data.event === "game_started") {
             setCurrentQuestion(data.question);
             setSelectedOption(null);
             setAnswered(false);
             setTimeLeft(TIMER_DURATION);
             setShowResults(false);
-          } else {
+          }
+          if (data.event === "next_question") {
+            if (data.question?.id) {
+              setCurrentQuestion(data.question);
+              setSelectedOption(null);
+              setAnswered(false);
+              setTimeLeft(TIMER_DURATION);
+              setShowResults(false);
+            } else {
+              router.push(`/game/${gameCode}/results`);
+            }
+          }
+          if (data.event === "game_over") {
             router.push(`/game/${gameCode}/results`);
           }
-        }
-        if (data.event === "game_over") {
-          router.push(`/game/${gameCode}/results`);
-        }
-        // Handle timeout event if all players haven't answered when timer expires
-        if (data.event === "question_timeout") {
-          setShowResults(true);
-          if (!answered) {
-            setAnswered(true);
-            setSelectedOption(null);
+          // Handle timeout event if all players haven't answered when timer expires
+          if (data.event === "question_timeout") {
+            setShowResults(true);
+            if (!answered) {
+              setAnswered(true);
+              setSelectedOption(null);
+            }
           }
-        }
-      };
+        };
 
-      ws.onerror = (event) => console.error("❌ WebSocket error:", event);
-      ws.onclose = () => console.log("🔌 WebSocket closed on play page");
-    } catch (e) {
-      console.error("❌ Failed to connect to WebSocket:", e);
-    }
-  };
+        ws.onerror = (event) => console.error("❌ WebSocket error:", event);
+        ws.onclose = () => console.log("🔌 WebSocket closed on play page");
+      } catch (e) {
+        console.error("❌ Failed to connect to WebSocket:", e);
+      }
+    };
 
-  connectToLeaderWebSocket();
-}, [gameCode, router, setPlayers, answered]);
-  
-  
+    connectToLeaderWebSocket();
+  }, [gameCode, router, setPlayers, answered]);
 
   // Function to submit an answer
   const handleAnswer = async (index: number) => {
@@ -214,8 +211,7 @@ useEffect(() => {
       }
       const data = await response.json();
       console.log("Next question response:", data);
-      // The new question will also be broadcast via WebSocket, so no need to set state here.
-      // However, if the response indicates no more questions, navigate to results.
+
       if (!data.question || !data.question.id) {
         router.push(`/game/${gameCode}/results`);
       }
@@ -304,7 +300,6 @@ useEffect(() => {
             </div>
           </div>
         )}
-
 
         {isHost && showResults && (
           <button
