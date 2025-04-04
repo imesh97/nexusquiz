@@ -58,7 +58,8 @@ export default function ResultsPage() {
   // Handler for the host's "Play Again" (or end game) button
   const handleEndGame = async () => {
     try {
-      const response = await fetch("http://localhost:8000/lobby/end", {
+      const leaderUrl = await getLeaderUrl();
+      const response = await fetch(`${leaderUrl}/lobby/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

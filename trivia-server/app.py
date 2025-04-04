@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from typing import Dict, List
 import sys
 
-if "PORT" in os.environ:
+if "PORT" in os.environ: 
     PORT = int(os.environ["PORT"])
 else:
     # fallback: try to parse from sys.argv (works with `uvicorn app:app --port 8001`)
@@ -111,11 +111,16 @@ async def forward_to_leader(request: Request):
         headers = dict(request.headers)
         method = request.method
         path = request.url.path
-        response = await client.request(
-            method, f"{current_leader}{path}", content=body, headers=headers,
-        )
-        return response
-
+        try:
+            response = await client.request(
+                method, f"{current_leader}{path}", content=body, headers=headers,
+            )
+            print(f"[{PORT}] Forwarded {method} {path} to {current_leader} -> {response.status_code}")
+            return response
+        except Exception as e:
+            print(f"[{PORT}] Failed to forward to {current_leader}: {e}")
+            raise HTTPException(status_code=503, detail="Leader unreachable")
+            
 def replicate_lobby(code: str, lobby_data: dict):
     for node in NODE_URLS:
         if node != get_self_url():
@@ -417,6 +422,19 @@ async def on_startup():
         last_role = new_role
 
     asyncio.create_task(heartbeat_loop())
+from fastapi.responses import JSONResponse
+
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+        status_code=204
+    )
 
 if __name__ == "__main__":
     import uvicorn

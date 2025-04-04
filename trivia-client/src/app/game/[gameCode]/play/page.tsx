@@ -130,7 +130,8 @@ export default function PlayPage() {
       setAnswered(true);
 
       try {
-        const response = await fetch("http://localhost:8000/lobby/answer", {
+        const leaderUrl = await getLeaderUrl();
+        const response = await fetch(`${leaderUrl}/lobby/answer`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -155,7 +156,8 @@ export default function PlayPage() {
   // Host-only function to trigger the next question
   const handleNextQuestion = async () => {
     try {
-      const response = await fetch("http://localhost:8000/lobby/next", {
+      const leaderUrl = await getLeaderUrl();
+      const response = await fetch(`${leaderUrl}/lobby/next`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: gameCode, player_id: playerId }),
