@@ -1,8 +1,8 @@
-//src/app/game/[gameCode]/page.tsx
+// src/app/game/[gameCode]/page.tsx
 "use client";
 
-import { getLeaderUrl } from "@/utils/network";
-
+import { getLeaderUrl, clearLeaderCache } from "@/utils/network";
+import { useGameWebSocket } from "@/hooks/useGameWebSocket";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
@@ -14,7 +14,7 @@ export default function LobbyPage() {
   const [leaderUrl, setLeaderUrl] = useState<string | null>(null);
 
   const playerName = useGameStore((state) => state.playerName);
-  const playerId = useGameStore((state) => state.playerId); // ensure you save newPlayerId here
+  const playerId = useGameStore((state) => state.playerId);
   const players = useGameStore((state) => state.players);
   const setPlayers = useGameStore((state) => state.setPlayers);
   const isHost = useGameStore((state) => state.isHost);
@@ -22,9 +22,8 @@ export default function LobbyPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect if lobby state is invalid (as in your previous implementation)
+  // Check if we have the necessary data
   useEffect(() => {
-    // (Your existing lobby access validation logic)
     if (!playerName || !gameCodeParam) {
       console.warn("Redirecting: Missing player or game info.");
       resetGame();
@@ -32,76 +31,102 @@ export default function LobbyPage() {
     }
   }, [playerName, gameCodeParam, resetGame, router]);
 
+  // Get the leader URL for API calls
   useEffect(() => {
-    const resolveLeaderAndConnect = async () => {
+    const fetchLeaderUrl = async () => {
       try {
+        console.log("Fetching leader URL for API calls...");
         const url = await getLeaderUrl();
+        console.log(`Leader URL resolved: ${url}`);
         setLeaderUrl(url);
-  
-        const ws = new WebSocket(url.replace(/^http/, "ws") + `/ws/${gameCodeParam}`);
-  
-        ws.onopen = () => {
-          console.log("✅ WebSocket connected on lobby page");
-        };
-  
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.event === "game_started") {
-              router.push(`/game/${gameCodeParam}/play`);
-            }
-            if (data.event === "player_joined") {
-              setPlayers(data.players);
-            }
-          } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
-          }
-        };
-  
-        ws.onerror = (err) => {
-          console.error("❌ WebSocket error:", err);
-        };
-  
-        ws.onclose = () => {
-          console.log("🔌 WebSocket connection closed on lobby page");
-        };
-      } catch (e) {
-        console.error("❌ Failed to connect to WebSocket:", e);
-        setError("Could not connect to game server.");
+      } catch (err) {
+        console.error("Failed to resolve leader URL:", err);
+        setError("Could not connect to game server. Please try again.");
       }
     };
-  
-    resolveLeaderAndConnect();
-  }, [gameCodeParam, router, setPlayers]);
-  
-  
-  
+
+    fetchLeaderUrl();
+  }, []);
+
+  // Use our custom WebSocket hook
+  const { isConnected, connectionAttempts, error: wsError, reconnect } = useGameWebSocket({
+    gameCode: gameCodeParam,
+    autoReconnect: true,
+    maxReconnectAttempts: 5,
+    onMessage: (data) => {
+      if (data.event === "game_started") {
+        console.log("Game started, redirecting to play page");
+        router.push(`/game/${gameCodeParam}/play`);
+      }
+      if (data.event === "player_joined") {
+        console.log("Player joined, updating player list", data.players);
+        setPlayers(data.players);
+      }
+    },
+    onError: (err) => {
+      console.error("WebSocket error in lobby:", err);
+      setError("Connection error. Please try refreshing the page.");
+    },
+    onOpen: () => {
+      console.log("WebSocket connected in lobby");
+      setError(null); // Clear any previous errors
+    },
+    onClose: () => {
+      console.log("WebSocket closed in lobby");
+    },
+  });
 
   // Function for the host to start the game
   const handleStartGame = async () => {
     try {
       if (!leaderUrl) {
-        setError("Leader not resolved yet.");
+        setError("Waiting for server connection. Please try again in a moment.");
         return;
       }
       
-      const response = await fetch(`${leaderUrl}/lobby/start`, {
+      console.log(`Starting game with code ${gameCodeParam} for player ${playerId}`);
+      
+      // Clear leader cache before important API calls
+      clearLeaderCache();
+      
+      // Get fresh leader URL
+      const freshLeaderUrl = await getLeaderUrl();
+      console.log(`Using fresh leader URL for game start: ${freshLeaderUrl}`);
+      
+      const response = await fetch(`${freshLeaderUrl}/lobby/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: gameCodeParam, player_id: playerId }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ 
+          code: gameCodeParam, 
+          player_id: playerId 
+        }),
       });
       
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || "Failed to start game");
       }
+      
+      console.log("Game start request successful");
       // The game start event will be broadcast via WebSocket to all clients
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Start game failed:", error);
-      setError(error.message || "Error starting game");
+      setError(error.message || "Error starting game. Please try again.");
+      
+      // Try reconnecting WebSocket on error
+      reconnect();
     }
   };
+
+  // Display connection status for debugging
+  const connectionStatus = connectionAttempts > 0 
+    ? `Reconnecting (${connectionAttempts}/5)...` 
+    : isConnected 
+      ? "Connected" 
+      : "Connecting...";
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-8">
@@ -114,6 +139,12 @@ export default function LobbyPage() {
           <span className="font-semibold tracking-widest bg-gray-800 px-3 py-1 rounded-md shadow-inner">
             {gameCodeParam}
           </span>
+        </p>
+        <p className="text-sm mt-2">
+          <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
+            isConnected ? 'bg-green-500' : 'bg-red-500'
+          }`}></span>
+          {connectionStatus}
         </p>
       </header>
 
@@ -146,7 +177,10 @@ export default function LobbyPage() {
         {isHost ? (
           <button
             onClick={handleStartGame}
-            className="w-full bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transform hover:scale-105 transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-400"
+            disabled={!isConnected}
+            className={`w-full bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transform transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-400 ${
+              !isConnected ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+            }`}
           >
             Start Game!
           </button>
@@ -156,7 +190,17 @@ export default function LobbyPage() {
           </p>
         )}
 
-        {error && <p className="text-red-400 text-center mt-4">{error}</p>}
+        {error && (
+          <div className="mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded-lg">
+            <p className="text-red-400 text-center">{error}</p>
+            <button 
+              onClick={reconnect}
+              className="mt-2 text-sm underline text-red-300 mx-auto block hover:text-red-200"
+            >
+              Try reconnecting
+            </button>
+          </div>
+        )}
       </main>
 
       <footer className="mt-8 text-center text-gray-500 text-sm">

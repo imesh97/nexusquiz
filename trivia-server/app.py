@@ -30,7 +30,7 @@ current_leader: str = f"http://localhost:{min(NODE_LIST)}"  # Initial assumption
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # 👈 your Next.js dev server
+    allow_origins=["*"],  # 👈 your Next.js dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -120,7 +120,7 @@ async def forward_to_leader(request: Request):
         except Exception as e:
             print(f"[{PORT}] Failed to forward to {current_leader}: {e}")
             raise HTTPException(status_code=503, detail="Leader unreachable")
-            
+
 def replicate_lobby(code: str, lobby_data: dict):
     for node in NODE_URLS:
         if node != get_self_url():
