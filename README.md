@@ -42,8 +42,8 @@ By: Imesh Nimsitha, Que Hung Dang, Randeep Bhalla, Nathen Fernandes
 1. Clone the repository
 
    ```bash
-   git clone https://github.com/alexdng10/CS4459.git
-   cd CS4459/trivia-server
+   git clone https://github.com/imesh97/nexusquiz.git
+   cd nexusquiz/trivia-server
    ```
 
 2. Create a virtual environment
@@ -137,3 +137,7 @@ The system maintains availability even when nodes fail:
 2. If the leader node fails, a new leader is automatically elected
 3. Clients detect leader changes and reconnect to the new leader
 4. Game state is preserved through replication
+
+## Project Report
+
+The project report can be found [here](https://github.com/imesh97/nexusquiz/blob/main/report.pdf).
