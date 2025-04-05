@@ -141,3 +141,7 @@ The system maintains availability even when nodes fail:
 ## Project Report
 
 The project report can be found [here](https://github.com/imesh97/nexusquiz/blob/main/report.pdf).
+
+## Demo
+
+A video demo of the application can be found [here](https://drive.google.com/file/d/1ZJU_cDErc5cFRO5KBX-DtXh0k9jFPeNh/view?usp=sharing).
