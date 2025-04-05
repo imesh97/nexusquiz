@@ -2,7 +2,11 @@
 
 NexusQuiz is a real-time multiplayer trivia game built as a distributed system with fault tolerance capabilities. This project demonstrates core distributed systems concepts including leader election, state replication, and fault tolerance.
 
-By: Imesh Nimsitha, Que Hung Dang, Randeep Bhalla, Nathen Fernandes
+**Authors:** Imesh Nimsitha, Que Hung Dang, Randeep Bhalla, Nathen Fernandes
+
+**Project Report:** [Click here](https://github.com/imesh97/nexusquiz/blob/main/report.pdf)
+
+**Video Demo:** [Click here](https://drive.google.com/file/d/1ZJU_cDErc5cFRO5KBX-DtXh0k9jFPeNh/view?usp=sharing)
 
 ## Features
 
@@ -137,11 +141,3 @@ The system maintains availability even when nodes fail:
 2. If the leader node fails, a new leader is automatically elected
 3. Clients detect leader changes and reconnect to the new leader
 4. Game state is preserved through replication
-
-## Project Report
-
-The project report can be found [here](https://github.com/imesh97/nexusquiz/blob/main/report.pdf).
-
-## Demo
-
-A video demo of the application can be found [here](https://drive.google.com/file/d/1ZJU_cDErc5cFRO5KBX-DtXh0k9jFPeNh/view?usp=sharing).
